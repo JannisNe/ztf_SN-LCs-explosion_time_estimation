@@ -79,7 +79,7 @@ def get_ind_table(table, model_name=None, zfix=True, include_model=None, fit_qua
     #       red_chi2 is minimal is returned
     #   zfix: get results for fits with fixed redshift if True
     #   include_model: list of strings, include only these models
-    #   fit_qual_level: float, specifies the intervall in red_chi2 in units of the minimal value found, up to which
+    #   fit_qual_level: float, specifies the interval in red_chi2 in units of the minimal value found, up to which
     #                   other fits should be included
     #   include_IDs: list of IDs to be included, used to implement exterior cuts
     # Output
@@ -182,7 +182,7 @@ def calc_tables(filename_base, ind, appendix):
         chi_tab = vstack(chi_list)
         mcmc_tab = vstack(mcmc_list)
         if len(chi_tab)==0 and len(mcmc_tab)==0:
-            raise FileNotFoundError(f'Length of concatenated tables is zero! Propaply {filename_base} does\'n exist.')
+            raise FileNotFoundError(f'Length of concatenated tables is zero! Probably {filename_base} does\'n exist.')
         return chi_tab, mcmc_tab
     else: raise NotImplementedError('data type not implemented')
 
@@ -294,10 +294,10 @@ def get_good_lcIDs(sim,
     #               number of data points before the observed peak (in each band)
     #   req_postpeak: same as req_prepeak but for datapoints after the peak
     #   check_band: either 'any' or 'all', specify if all bands have to fulfill the requests or just any
-    #               use 'all' if eithor of the requests is a dict
+    #               use 'all' if either of the requests is a dict
     # Output
     #   list of IDs that comply with the requests
-    #   list of IDs that dont comply
+    #   list of IDs that don't comply
     IDs = []
     cut_IDs = []
 
