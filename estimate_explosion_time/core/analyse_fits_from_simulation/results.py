@@ -1,4 +1,4 @@
-from estimate_explosion_time.shared import output_dir
+from estimate_explosion_time.shared import output_dir, plots_dir
 import os
 from astropy.table import Table, vstack
 import logging
@@ -53,7 +53,7 @@ class ResultHandler:
 
         return collected_data_filename
 
-
+    
 
 class ResultError(Exception):
     def __init__(self, msg):
