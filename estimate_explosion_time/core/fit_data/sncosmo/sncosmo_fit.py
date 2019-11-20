@@ -1,12 +1,11 @@
 import sncosmo
 import numpy as np
 import pickle
-from astropy.table import Table
 import estimate_explosion_time.sncosmo_register_ztf_bands
+from estimate_explosion_time.core.fit_data.sncosmo import sncosmo_model_names as model_names_dict
 import random
 import argparse
-import json
-from tqdm import tqdm
+
 
 # set up parser
 parser = argparse.ArgumentParser(description='Fits lightcurves using SNCosmo')
@@ -16,35 +15,48 @@ parser.add_argument('outfile', type=str, help='name of the output file')
 parser.add_argument('--method', type=str,
                     help='name of fitting routine to be used',
                     choices=['chi2', 'mcmc', 'nester'], default='chi2')
+parser.add_argument('--sn_type', type=str,
+                    help='SN type',
+                    choices=['Ia', 'Ibc', 'IIP', 'IIn', 'IIpec', 'all'], default='Ibc')
 args = parser.parse_args()
 
 lc = args.lc-1
 infile = args.infile
 outname = args.outfile
 method_name = args.method
+sn_type = args.sn_type
+
+# select model names corresponding to the used sn type
+if sn_type is not 'all':
+    model_names = model_names_dict[sn_type]
+
+# if all, use all models
+else:
+    model_names = []
+    for ls in model_names_dict.values(): model_names += ls
+
+# keyword arguments to be passed to fit routine
+kwargs = {}
 
 # get the fit routine from sncosmo
-if method_name is 'chi2':
+if 'chi2' in method_name:
     fit_routine = sncosmo.fit_lc
-elif method_name is 'mcmc':
+elif 'mcmc' in method_name:
     fit_routine = sncosmo.mcmc_lc
-elif method_name is 'nester':
+elif 'nester' in method_name:
     fit_routine = sncosmo.nest_lc
+    kwargs['guess_amplitude_bound'] = True
 else:
     raise ValueError(f'Method {method_name} not known in SNCosmo!')
 
 # set seed
 random.seed(7281)
 
-# model names of models to be used
-with open('/lustre/fs23/group/icecube/necker/software/sncosmo_model_names.json') as fin:
-    model_names = json.load(fin)
-
 # parameters to vary in fit and bounds
 vparam_names = ['z', 't0', 'amplitude']
 nparam = len(vparam_names)
 t0ind = np.array(vparam_names) == 't0'
-bounds = {'z': (0, 1)}
+zbound = {'z': (0, 1)}
 
 # load data
 with open(infile, 'rb') as fin:
@@ -62,7 +74,7 @@ formats = ['<f8'] * (2*nparam+1) + ['<U15', '<i8', '<f8', '?', '<f8', '<f8', '?'
 outarr = np.zeros(nfit, dtype={'names': arr_names, 'formats': formats})
 
 # loop over models and lightcurves and fixing z or not to execute the fits
-for modeln, model_name in enumerate(tqdm(model_names, desc='fit models')):
+for modeln, model_name in enumerate(model_names):
     model = sncosmo.Model(source=model_name)
 
     for zfix in [1]:
@@ -70,17 +82,17 @@ for modeln, model_name in enumerate(tqdm(model_names, desc='fit models')):
 
         if zfix == 1:
             vparam_names_used = ['t0', 'amplitude']
-            bounds_used = {}
+            bounds={}
             model.set(z=z_true)
 
         else:
             vparam_names_used = vparam_names
-            bounds_used = bounds
+            bounds = zbound
 
         nparam_used = len(vparam_names_used)
 
         try:
-            res, fitted_model = fit_routine(lcs, model, vparam_names_used, bounds=bounds_used)
+            res, fitted_model = fit_routine(lcs, model, vparam_names_used, bounds=bounds, **kwargs)
 
             outarr[vparam_names][ind] = tuple(res.parameters)
             outarr[['ztrue', 'zfix']][ind] = tuple([z_true, zfix == 1])
