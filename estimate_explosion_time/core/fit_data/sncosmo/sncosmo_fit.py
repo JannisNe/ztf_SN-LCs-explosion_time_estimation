@@ -1,10 +1,13 @@
 import sncosmo
 import numpy as np
 import pickle
-import estimate_explosion_time.sncosmo_register_ztf_bands
-from estimate_explosion_time.core.fit_data.sncosmo import sncosmo_model_names as model_names_dict
 import random
 import argparse
+import estimate_explosion_time.sncosmo_register_ztf_bands
+from estimate_explosion_time.core.fit_data.sncosmo import sncosmo_model_names as model_names_dict
+from estimate_explosion_time.core.analyse_fits_from_simulation.get_source_explosion_time.find_explosion_time \
+    import get_explosion_time
+
 
 
 # set up parser
@@ -18,6 +21,9 @@ parser.add_argument('--method', type=str,
 parser.add_argument('--sn_type', type=str,
                     help='SN type',
                     choices=['Ia', 'Ibc', 'IIP', 'IIn', 'IIpec', 'all'], default='Ibc')
+parser.add_argument('--zfix', type=bool,
+                    help='fix redshift in fit to known true value',
+                    default=True)
 args = parser.parse_args()
 
 lc = args.lc-1
@@ -25,6 +31,7 @@ infile = args.infile
 outname = args.outfile
 method_name = args.method
 sn_type = args.sn_type
+zfix = args.zfix
 
 # select model names corresponding to the used sn type
 if sn_type is not 'all':
@@ -64,50 +71,68 @@ with open(infile, 'rb') as fin:
     lcs = data['lcs'][lc]
     t0_true = data['meta']['t0'][lc]
     ID = data['meta']['idx_orig'][lc]
-    z_true = data['meta']['z'][lc]
+
+    if zfix:
+        z_true = data['meta']['z'][lc]
+    else:
+        z_true = None
 
 # set up result arrays
-nfit = len(model_names) * 2
+nfit = len(model_names)
 vparam_namese = [x+'_e' for x in vparam_names]
-arr_names = vparam_names + vparam_namese + ['t0_true', 'model', 'ID', 'ztrue', 'zfix', 'red_chi2', 'nobs', 'error']
-formats = ['<f8'] * (2*nparam+1) + ['<U15', '<i8', '<f8', '?', '<f8', '<f8', '?']
+
+arr_names = vparam_names + vparam_namese + \
+            ['t_exp_fitted',
+             't_exp_true',
+             't_exp_dif'
+             'model',
+             'ID',
+             'ztrue',
+             'zfix',
+             'red_chi2',
+             'nobs',
+             'error']
+
+formats = ['<f8'] * (2*nparam+3) + ['<U20', '<i8', '<f8', '?', '<f8', '<f8', '?']
+
 outarr = np.zeros(nfit, dtype={'names': arr_names, 'formats': formats})
 
 # loop over models and lightcurves and fixing z or not to execute the fits
-for modeln, model_name in enumerate(model_names):
+for ind, model_name in enumerate(model_names):
     model = sncosmo.Model(source=model_name)
 
-    for zfix in [1]:
-        ind = 2 * modeln + zfix
+    if zfix:
+        vparam_names_used = ['t0', 'amplitude']
+        bounds={}
+        model.set(z=z_true)
 
-        if zfix == 1:
-            vparam_names_used = ['t0', 'amplitude']
-            bounds={}
-            model.set(z=z_true)
+    else:
+        vparam_names_used = vparam_names
+        bounds = zbound
 
-        else:
-            vparam_names_used = vparam_names
-            bounds = zbound
+    nparam_used = len(vparam_names_used)
 
-        nparam_used = len(vparam_names_used)
+    try:
+        res, fitted_model = fit_routine(lcs, model, vparam_names_used, bounds=bounds, **kwargs)
 
-        try:
-            res, fitted_model = fit_routine(lcs, model, vparam_names_used, bounds=bounds, **kwargs)
+        outarr[vparam_names][ind] = tuple(res.parameters)
+        outarr[['ztrue', 'zfix']][ind] = tuple([z_true, zfix])
+        outarr['t_exp_true'][ind] = t0_true
+        outarr['model'][ind] = model_name
+        outarr['ID'][ind] = ID
+        outarr['nobs'][ind] = len(lcs)
+        for j in range(nparam_used):
+            outarr[vparam_namese[j]][ind] = res.errors[vparam_names_used[j]]
+        tmp_chisq = sncosmo.chisq(lcs, fitted_model)/res.ndof
+        outarr['red_chi2'][ind] = tmp_chisq
 
-            outarr[vparam_names][ind] = tuple(res.parameters)
-            outarr[['ztrue', 'zfix']][ind] = tuple([z_true, zfix == 1])
-            outarr['t0_true'][ind] = t0_true
-            outarr['model'][ind] = model_name
-            outarr['ID'][ind] = ID
-            outarr['nobs'][ind] = len(lcs)
-            for j in range(nparam_used):
-                outarr[vparam_namese[j+zfix]][ind] = res.errors[vparam_names_used[j]]
-            tmp_chisq = sncosmo.chisq(lcs, fitted_model)/res.ndof
-            outarr['red_chi2'][ind] = tmp_chisq
+        t_exp_fitted = get_explosion_time(model_name) * (1 + res.parameters['z']) + res.parameters['t0']
+        outarr['t_exp_fitted'] = t_exp_fitted
+        outarr['t_exp_dif'] = t0_true - t_exp_fitted
 
-        except (ValueError, RuntimeError, KeyError, RuntimeWarning, sncosmo.fitting.DataQualityError) as err:
-            print(err, ' for model ', model_name, ' and lightcurve ', str(ID), ' zfix is ', str(zfix))
-            outarr['error'][ind] = True
+    except (ValueError, RuntimeError, KeyError, RuntimeWarning, sncosmo.fitting.DataQualityError) as err:
+        print(err, ' for model ', model_name, ' and lightcurve ', str(ID), ' zfix is ', str(zfix))
+        outarr['error'][ind] = True
 
 # write to pickle file
 with open(outname, 'wb') as fout:

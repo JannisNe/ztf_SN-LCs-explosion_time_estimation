@@ -1,10 +1,7 @@
 import logging
-from astropy.table import Table
-import pickle
 from estimate_explosion_time.shared import simulation_dir, plots_dir
 from estimate_explosion_time.core.data_prep.data import DataHandler, load_dh
 from estimate_explosion_time.core.fit_data.fitlauncher.fitlauncher import Fitter
-from estimate_explosion_time.core.analyse_fits_from_simulation.results import ResultHandler
 
 
 logging.getLogger().setLevel("DEBUG")
@@ -15,13 +12,13 @@ simulation_name = 'simsurvey_simulation'
 
 simsurvey_path = f'{simulation_dir}/{simulation_name}'
 
-# simsurveyDH = DataHandler(simsurvey_path, simulation_name)
-#
-# fitter = Fitter(method)
-#
-# fitter.fit_lcs(simsurveyDH)
+simsurveyDH = DataHandler(simsurvey_path, simulation_name)
 
-simsurveyDH = load_dh(simulation_name, method)
+fitter = Fitter(method)
 
-simsurveyDH.collect_fitted_data()
+fitter.fit_lcs(simsurveyDH)
+
+# simsurveyDH = load_dh(simulation_name, method)
+
+simsurveyDH.results()
 

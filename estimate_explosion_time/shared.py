@@ -32,10 +32,13 @@ simulation_dir = f'{input_dir}/simulations'
 real_data_dir = f'{input_dir}/real_data'
 
 plots_dir = f'{output_dir}/plots'
+output_data = f'{output_dir}/data'
+
 
 all_dirs = [output_dir, storage_dir, input_dir,
             cache_dir, pickle_dir, log_dir, dh_dict_dir,
-            simulation_dir,real_data_dir, plots_dir]
+            simulation_dir,real_data_dir,
+            plots_dir, output_data]
 
 
 for dirname in all_dirs:

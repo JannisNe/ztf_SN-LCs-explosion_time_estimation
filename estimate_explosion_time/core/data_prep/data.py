@@ -1,5 +1,5 @@
 from estimate_explosion_time.shared import simulation_dir, real_data_dir, dh_dict_dir
-from estimate_explosion_time.core.analyse_fits_from_simulation.results import ResultHandler
+from estimate_explosion_time.core.analyse_fits_from_simulation.results import SNCosmoResultHandler, MosfitResultHandler
 import os
 from warnings import warn
 from shutil import copytree, copy2
@@ -116,7 +116,7 @@ class DataHandler:
 
             lc = Table(lcs[ind])
             lc['band'][lc['band'] == 'desi'] = 'ztfi'
-            fname = f'{self._mosfit_data_}/{ind+1}.csv'
+            fname = f'{self._mosfit_data_}/{ind + 1}.csv'
 
             for col in add_columns:
 
@@ -171,14 +171,21 @@ class DataHandler:
         if not self.dh_dict:
             self.dh_dict = dh_dict_path(self.name, self.method)
 
-        logging.debug(f'saving the DataHandler dictionary {dh_dict} to {self.dh_dict}')
+        logging.debug(f'saving the DataHandler dictionary to {self.dh_dict}')
 
         with open(self.dh_dict, 'wb') as fout:
             pickle.dump(dh_dict, fout)
 
-    def collect_fitted_data(self):
-        rhandler = ResultHandler(self)
-        self.collected_data = rhandler.collect_results()
+    def results(self):
+
+        if 'sncosmo' in self.method:
+            rhandler = SNCosmoResultHandler(self)
+        elif 'mosfit' in self.method:
+            rhandler = MosfitResultHandler(self)
+        else:
+            raise ValueError(f'method {self.method} not known')
+
+        rhandler.collect_results()
         self.save_dh_dict()
 
 
