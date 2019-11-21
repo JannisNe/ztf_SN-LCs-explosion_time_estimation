@@ -1,9 +1,12 @@
-from estimate_explosion_time.shared import output_dir, plots_dir
+import numpy as np
 import os
 from astropy.table import Table, vstack
 import logging
 import pickle
 from tqdm import tqdm
+from estimate_explosion_time.core.analyse_fits_from_simulation.get_source_explosion_time.find_explosion_time\
+    import get_explosion_time
+from estimate_explosion_time.shared import output_dir, plots_dir
 
 
 class ResultHandler:
@@ -18,42 +21,55 @@ class ResultHandler:
         else:
             raise ResultError('No results for this data!')
 
+        self.dhandler = dhandler
         self.method_used = dhandler.method
         self.collected_data = None
+
+
+class SNCosmoResultHandler(ResultHandler):
 
     def collect_results(self):
 
         logging.info('collecting fit results')
 
-        if 'sncosmo' in self.method_used:
+        data = []
+        for file in tqdm(os.listdir(self.pickle_dir), desc='collecting fit results'):
 
-            data = []
-            for file in tqdm(os.listdir(self.pickle_dir), desc='collecting fit results'):
+            full_file_path = f'{self.pickle_dir}/{file}'
+            with open(full_file_path, 'rb') as f:
+                dat = pickle.load(f)
 
-                full_file_path = f'{self.pickle_dir}/{file}'
-                with open(full_file_path, 'rb') as f:
-                    dat = pickle.load(f)
+            data += [{'fit_output': Table(dat)}]
+            os.remove(full_file_path)
 
-                data += [Table(dat)]
-                os.remove(full_file_path)
+        self.collected_data = data
 
-            self.collected_data = vstack(data)
-
-        elif 'mosfit' in self.method_used:
-            # TODO: implement for mosfit!
-            raise NotImplementedError
-
-        else:
-            raise ValueError(f'The method {self.method_used} not known!')
-
-        collected_data_filename = f'{self.pickle_dir}/collected_data.pkl'
+        collected_data_filename = f'{self.pickle_dir}.pkl'
 
         with open(collected_data_filename, 'wb') as fout:
             pickle.dump(self.collected_data, fout)
 
-        return collected_data_filename
+        self.dhandler.collected_data = collected_data_filename
+        self.dhandler.save_dh_dict()
 
-    
+
+
+
+
+
+
+
+
+class MosfitResultHandler(ResultHandler):
+
+    def collect_results(self):
+        # TODO: implement this
+        pass
+
+    def get_fitted_explosion_times(self):
+        # TODO: implement this
+        pass
+
 
 class ResultError(Exception):
     def __init__(self, msg):
