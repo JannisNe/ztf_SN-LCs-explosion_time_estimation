@@ -372,10 +372,6 @@ def get_good_lcIDs(sim,
             else:
                 comply_std[band] = True
 
-            # check for compliance with required maximal explosion time uncertainty
-
-
-
         if check_band == 'any':
             if np.any(list(comply_prepeak.values())) & np.any(list(comply_postpeak.values())) & \
                     np.any(list(comply_max_timedif.values())) & np.any(list(comply_std.values())):

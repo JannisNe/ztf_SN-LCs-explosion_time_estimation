@@ -2,8 +2,13 @@ import os
 import time
 import subprocess
 import logging
+import numpy as np
 from estimate_explosion_time.cluster.make_cluster_submit_script import make_desy_submit_file
-from estimate_explosion_time.shared import log_dir, cache_dir
+from estimate_explosion_time.shared import log_dir, cache_dir, get_custom_logger, main_logger_name
+
+
+logger = get_custom_logger(__name__)
+logger.setLevel(logging.getLogger(main_logger_name).getEffectiveLevel())
 
 
 username = os.path.basename(os.environ['HOME'])
@@ -11,10 +16,14 @@ username = os.path.basename(os.environ['HOME'])
 
 def submit_to_desy(method_name, indir, outdir, njobs, cache=cache_dir, simulation_name=None):
 
+    name = f'{method_name}_{simulation_name}'
+
     # remove old logs
-    logging.debug('removing old log files')
+    logger.debug('removing old log files')
     for file in os.listdir(log_dir):
-        os.remove(log_dir + '/' + file)
+        if name in file:
+            logger.debug(f'removing {log_dir + "/" + file}')
+            os.remove(log_dir + '/' + file)
 
     submit_file = make_desy_submit_file(method_name, indir, outdir, cache)
 
@@ -22,23 +31,32 @@ def submit_to_desy(method_name, indir, outdir, njobs, cache=cache_dir, simulatio
                  '-t 1-{0} ' \
                  '-o {1} ' \
                  '-j y ' \
-                 '-m ae ' \
-                 '-l h_rss=4G ' \
+                 '-m a ' \
+                 '-l h_rss=1G ' \
                  '-l h_cpu=30:00:00 ' \
                  '-l s_rt=24:00:00 '.format(njobs, log_dir,)
+                 # -m ae
 
     if simulation_name:
-        submit_cmd += f'-N {method_name}_{simulation_name} '
+        submit_cmd += f'-N {name} '
 
     submit_cmd += submit_file
 
-    logging.debug(f'submit command is {submit_cmd}')
+    logger.debug(f'submit command is {submit_cmd}')
 
-    os.system(submit_cmd)
+    # os.system(submit_cmd)
+
+    process = subprocess.Popen(submit_cmd, stdout=subprocess.PIPE, shell=True)
+    msg = process.stdout.read().decode()
+    logger.info(str(msg))
+    job_id = int(str(msg).split('job-array')[1].split('.')[0])
+
+    return job_id
 
 
-def wait_for_cluster():
-    """Runs the command cmd, which queries the status of the job on the
+def wait_for_cluster(job_id):
+    """
+    Runs the command cmd, which queries the status of the job on the
     cluster, and reads the output. While the output is not an empty
     string (indicating job completion), the cluster is re-queried
     every 30 seconds. Occasionally outputs the number of remaining sub-tasks
@@ -47,33 +65,41 @@ def wait_for_cluster():
     continue.
     """
     cmd = f'qstat -u {username}'
-    time.sleep(10)
     process = subprocess.Popen(cmd, stdout=subprocess.PIPE, shell=True)
     tmp = process.stdout.read().decode()
+    n_total = n_tasks(tmp, job_id)
     i = 31
     j = 6
-    while tmp != '':
+    while n_total != 0:
         if i > 3:
-
-            n_total = len(str(tmp).split('\n')) - 3
 
             running_process = subprocess.Popen(
                 cmd + " -s r", stdout=subprocess.PIPE, shell=True)
             running_tmp = running_process.stdout.read().decode()
 
             if running_tmp != '':
-                n_running = len(running_tmp.split('\n')) - 3
+                n_running = n_tasks(running_tmp, job_id)
             else:
                 n_running = 0
 
-            print(time.asctime(time.localtime()), n_total, "entries in queue. ", end=' ')
-            print("Of these,", n_running, "are running tasks, and", end=' ')
-            print(n_total-n_running, "are jobs still waiting to be executed.")
-            print(time.asctime(time.localtime()), "Waiting for Cluster")
+            logger.info(f'{time.asctime(time.localtime())} {n_total} entries in queue. '
+                        f'Of these, {n_running} are running tasks, and '
+                        f'{n_total-n_running} are jobs still waiting to be executed.')
             i = 0
             j += 1
+
+        if j > 7:
+            logger.info(str(tmp))
+            j = 0
 
         time.sleep(30)
         i += 1
         process = subprocess.Popen(cmd, stdout=subprocess.PIPE, shell=True)
         tmp = process.stdout.read().decode()
+        n_total = n_tasks(tmp, job_id)
+
+
+def n_tasks(tmp, job_id):
+    st = str(tmp)
+    ids = np.array([int(s.split(' ')[2]) for s in st.split('\n')[2:-1]])
+    return len(ids[ids == job_id])

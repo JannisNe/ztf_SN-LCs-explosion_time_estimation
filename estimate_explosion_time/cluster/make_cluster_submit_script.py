@@ -1,12 +1,14 @@
 import logging
 import os
 from estimate_explosion_time.shared import \
-    root_dir, es_scratch_dir, activate_path, environment_path, mosfit_environment_path
+    root_dir, es_scratch_dir, activate_path, environment_path, mosfit_environment_path, \
+    get_custom_logger, main_logger_name
 from estimate_explosion_time.core.fit_data.sncosmo import get_sncosmo_fit_path
 
 
+logger = get_custom_logger(__name__)
+logger.setLevel(logging.getLogger(main_logger_name).getEffectiveLevel())
 multiprocess_dir = os.path.dirname(os.path.realpath(__file__))
-
 desy_submit_file = f'{multiprocess_dir}/submitDESY.sh'
 
 
@@ -85,8 +87,8 @@ def make_desy_submit_file(method_name, indir, outdir, cache):
 
     text = txt1 + fill + txt2
 
-    logging.info(f'making submit file at {desy_submit_file}')
-    logging.debug(f'root directory is {root_dir}')
+    logger.info(f'making submit file at {desy_submit_file}')
+    logger.debug(f'root directory is {root_dir}')
 
     with open(desy_submit_file, 'w') as f:
         f.write(text)

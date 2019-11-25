@@ -81,10 +81,17 @@ with open(infile, 'rb') as fin:
 nfit = len(model_names)
 vparam_namese = [x+'_e' for x in vparam_names]
 
+if zfix:
+    vparam_names_used = ['t0', 'amplitude']
+    bounds = {}
+else:
+    vparam_names_used = vparam_names
+    bounds = zbound
+
 arr_names = vparam_names + vparam_namese + \
-            ['t_exp_fitted',
+            ['t_exp_fit',
              't_exp_true',
-             't_exp_dif'
+             't_exp_dif',
              'model',
              'ID',
              'ztrue',
@@ -102,13 +109,7 @@ for ind, model_name in enumerate(model_names):
     model = sncosmo.Model(source=model_name)
 
     if zfix:
-        vparam_names_used = ['t0', 'amplitude']
-        bounds={}
         model.set(z=z_true)
-
-    else:
-        vparam_names_used = vparam_names
-        bounds = zbound
 
     nparam_used = len(vparam_names_used)
 
@@ -116,19 +117,25 @@ for ind, model_name in enumerate(model_names):
         res, fitted_model = fit_routine(lcs, model, vparam_names_used, bounds=bounds, **kwargs)
 
         outarr[vparam_names][ind] = tuple(res.parameters)
-        outarr[['ztrue', 'zfix']][ind] = tuple([z_true, zfix])
+        outarr['ztrue'][ind] = z_true
+        outarr['zfix'][ind] = zfix
         outarr['t_exp_true'][ind] = t0_true
         outarr['model'][ind] = model_name
         outarr['ID'][ind] = ID
         outarr['nobs'][ind] = len(lcs)
-        for j in range(nparam_used):
-            outarr[vparam_namese[j]][ind] = res.errors[vparam_names_used[j]]
+
+        for j in vparam_names_used:
+            outarr[j+'_e'][ind] = res.errors[j]
+
         tmp_chisq = sncosmo.chisq(lcs, fitted_model)/res.ndof
         outarr['red_chi2'][ind] = tmp_chisq
 
-        t_exp_fitted = get_explosion_time(model_name) * (1 + res.parameters['z']) + res.parameters['t0']
-        outarr['t_exp_fitted'] = t_exp_fitted
-        outarr['t_exp_dif'] = t0_true - t_exp_fitted
+        t_exp_fitted = get_explosion_time(model_name) * \
+                       (1 +
+                        res.parameters[np.array(model.param_names) == 'z'] ) \
+                       + res.parameters[np.array(model.param_names) == 't0']
+        outarr['t_exp_fit'][ind] = t_exp_fitted
+        outarr['t_exp_dif'][ind] = t0_true - t_exp_fitted
 
     except (ValueError, RuntimeError, KeyError, RuntimeWarning, sncosmo.fitting.DataQualityError) as err:
         print(err, ' for model ', model_name, ' and lightcurve ', str(ID), ' zfix is ', str(zfix))
