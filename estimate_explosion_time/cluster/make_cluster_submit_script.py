@@ -19,6 +19,9 @@ def make_desy_submit_file(method_name, indir, outdir, cache):
         script = get_sncosmo_fit_path()
         path_to_environment = environment_path
 
+        hrss = '1G'
+        hcpu = '02:00:00'
+
         fill = "OUTNAME=${ID}.pkl \n" \
                f"python {script} $ID $INDIR $OUTNAME"
 
@@ -31,6 +34,9 @@ def make_desy_submit_file(method_name, indir, outdir, cache):
     elif 'mosfit' in method_name:
 
         path_to_environment = mosfit_environment_path
+
+        hrss = '8G'
+        hcpu = '72:00:00'
 
         iterations = 600
         extrapolate = [20, 0]
@@ -45,14 +51,12 @@ def make_desy_submit_file(method_name, indir, outdir, cache):
         raise ValueError(f'Input {method_name} for method_name not understood!')
 
     txt1 = "#!/bin/zsh \n" \
-           "#-o /lustre/fs23/group/icecube/necker/software/job_logs/ \n" \
-           "#-notify \n" \
-           "#-j y \n" \
-           "#-m ae \n" \
-           "#-l h_rss=4G \n" \
-           "#-l h_cpu=30:00:00 \n" \
-           "#-l s_rt=24:00:00 \n" \
-           "#-t 1-200 \n" \
+           "#$-notify \n" \
+           "#$-j y \n" \
+           "#$-m a \n" \
+           f"#$-l h_rss={hrss} \n" \
+           f"#$-l h_cpu={hcpu} \n" \
+           "#$-l s_rt=72:00:00 \n" \
            "\n" \
            "date \n" \
            "\n" \

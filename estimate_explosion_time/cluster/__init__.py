@@ -29,13 +29,7 @@ def submit_to_desy(method_name, indir, outdir, njobs, cache=cache_dir, simulatio
 
     submit_cmd = 'qsub ' \
                  '-t 1-{0} ' \
-                 '-o {1} ' \
-                 '-j y ' \
-                 '-m a ' \
-                 '-l h_rss=1G ' \
-                 '-l h_cpu=30:00:00 ' \
-                 '-l s_rt=24:00:00 '.format(njobs, log_dir,)
-                 # -m ae
+                 '-o {1} '.format(njobs, log_dir,)
 
     if simulation_name:
         submit_cmd += f'-N {name} '
@@ -64,39 +58,49 @@ def wait_for_cluster(job_id):
     completion of job, terminates function process and allows the script to
     continue.
     """
-    cmd = f'qstat -u {username}'
-    process = subprocess.Popen(cmd, stdout=subprocess.PIPE, shell=True)
-    tmp = process.stdout.read().decode()
-    n_total = n_tasks(tmp, job_id)
-    i = 31
-    j = 6
-    while n_total != 0:
-        if i > 3:
 
-            running_process = subprocess.Popen(
-                cmd + " -s r", stdout=subprocess.PIPE, shell=True)
-            running_tmp = running_process.stdout.read().decode()
+    try:
 
-            if running_tmp != '':
-                n_running = n_tasks(running_tmp, job_id)
-            else:
-                n_running = 0
-
-            logger.info(f'{time.asctime(time.localtime())} {n_total} entries in queue. '
-                        f'Of these, {n_running} are running tasks, and '
-                        f'{n_total-n_running} are jobs still waiting to be executed.')
-            i = 0
-            j += 1
-
-        if j > 7:
-            logger.info(str(tmp))
-            j = 0
-
-        time.sleep(30)
-        i += 1
+        cmd = f'qstat -u {username}'
         process = subprocess.Popen(cmd, stdout=subprocess.PIPE, shell=True)
         tmp = process.stdout.read().decode()
         n_total = n_tasks(tmp, job_id)
+        i = 31
+        j = 6
+        while n_total != 0:
+            if i > 3:
+
+                running_process = subprocess.Popen(
+                    cmd + " -s r", stdout=subprocess.PIPE, shell=True)
+                running_tmp = running_process.stdout.read().decode()
+
+                if running_tmp != '':
+                    n_running = n_tasks(running_tmp, job_id)
+                else:
+                    n_running = 0
+
+                logger.info(f'{time.asctime(time.localtime())} - Job-ID {job_id}: '
+                            f'{n_total} entries in queue. '
+                            f'Of these, {n_running} are running tasks, and '
+                            f'{n_total-n_running} are jobs still waiting to be executed.')
+                i = 0
+                j += 1
+
+            if j > 7:
+                logger.info(str(tmp))
+                j = 0
+
+            time.sleep(30)
+            i += 1
+            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, shell=True)
+            tmp = process.stdout.read().decode()
+            n_total = n_tasks(tmp, job_id)
+
+    except KeyboardInterrupt:
+        delete_cmd = f'qdel {job_id}'
+        process = subprocess.Popen(delete_cmd, stdout=subprocess.PIPE, shell=True)
+        msg = process.stdout.read().decode()
+        logger.info(str(msg))
 
 
 def n_tasks(tmp, job_id):
