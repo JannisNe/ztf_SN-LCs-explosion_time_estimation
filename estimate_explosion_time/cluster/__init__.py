@@ -22,7 +22,7 @@ def submit_to_desy(method_name, indir, outdir, njobs, cache=cache_dir, simulatio
     logger.debug('removing old log files')
     for file in os.listdir(log_dir):
         if name in file:
-            logger.debug(f'removing {log_dir + "/" + file}')
+            logger.debug(f'removing {log_dir}/{file}')
             os.remove(log_dir + '/' + file)
 
     submit_file = make_desy_submit_file(method_name, indir, outdir, cache)
@@ -100,6 +100,16 @@ def wait_for_cluster(job_id):
 
 
 def n_tasks(tmp, job_id):
+    """
+    Returns the number of tasks given the output of qsub
+    :param tmp: output of qsub
+    :param job_id: int, optional, if given only tasks belonging to this job will we counted
+    :return: int
+    """
     st = str(tmp)
     ids = np.array([int(s.split(' ')[2]) for s in st.split('\n')[2:-1]])
-    return len(ids[ids == job_id])
+
+    if job_id:
+        return len(ids[ids == job_id])
+    else:
+        return len(ids)
