@@ -6,11 +6,11 @@ import pickle
 from astropy.table import Table
 from astropy.io import ascii
 import numpy as np
-from estimate_explosion_time.shared import simulation_dir, real_data_dir, dh_dict_dir,\
+from estimate_explosion_time.shared import simulation_dir, real_data_dir, dh_dir,\
     get_custom_logger, main_logger_name
 from estimate_explosion_time.core.analyse_fits_from_simulation.results import SNCosmoResultHandler, MosfitResultHandler
 from estimate_explosion_time.core.analyse_fits_from_simulation.plots import Plotter
-from estimate_explosion_time.cluster import wait_for_cluster
+from estimate_explosion_time.core.fit_data.fitlauncher.fitlauncher import FitterError
 
 
 logger = get_custom_logger(__name__)
@@ -29,7 +29,7 @@ class DataHandler:
         self.pickle_dir = None
         self.latest_method = None
         self.dh_dict = None
-        self.save_path = dh_path(self.name)
+        self.save_path = DataHandler.dh_path(self.name)
         self.collected_data = None
         self.rhandlers = {}
         self.plotter = Plotter(self)
@@ -40,7 +40,7 @@ class DataHandler:
             diri = real_data_dir
 
         diri += f'/{name}'
-        logger.info(f'data directory will be {diri}')
+        logger.debug(f'data directory will be {diri}')
 
         iadd = 2
 
@@ -95,7 +95,7 @@ class DataHandler:
         self._sncosmo_data_ = f'{self.dir}/{self.name}.pkl'
         self._mosfit_data_ = f'{self.dir}/{self.name}_csv'
         self.nlcs = len(os.listdir(self._mosfit_data_))
-        logger.info(f'{self.nlcs} found in data')
+        logger.info(f'{self.nlcs} lightcurves found in data')
 
     def write_pkl_to_csv(self):
 
@@ -151,43 +151,55 @@ class DataHandler:
                 ascii.write(lc, fout)
 
     def get_data(self, method):
+
         if 'sncosmo' in method:
+            logger.debug(f'using data stored in {self._sncosmo_data_}')
             return self._sncosmo_data_
+
         elif 'mosfit' in method:
             if not os.path.isdir(self._mosfit_data_):
                 self.write_pkl_to_csv()
+            logger.debug(f'using data stored in {self._mosfit_data_}')
             return self._mosfit_data_
 
     def use_method(self, method, job_id):
 
-        logger.info(f'DataHandler for {self.name} configured to use {method}')
+        logger.debug(f'DataHandler for {self.name} configured to use {method}')
         self.latest_method = method
 
         # initialize ResultHandler for the method
         if self.latest_method not in self.rhandlers.keys():
+
             if 'sncosmo' in self.latest_method:
                 rhandler = SNCosmoResultHandler(self, job_id)
             elif 'mosfit' in self.latest_method:
                 rhandler = MosfitResultHandler(self, job_id)
             else:
                 raise ValueError(f'method {self.latest_method} not known')
+
             self.rhandlers[self.latest_method] = rhandler
-        self.data = self.get_data(method)
-        logger.debug(f'using data stored in {self.data}')
 
-    def save_dh_dict(self):
+        # If the result Handler already exists, get it
+        else:
+            rhandler = self.rhandlers[self.latest_method]
 
-        dh_dict = {}
-        for key in self.__dict__.keys():
-            dh_dict[key] = self.__dict__[key]
+        # if Result Handler job ID is set, check if it's the same as the Fitter's
+        if rhandler.job_id:
 
-        if not self.dh_dict:
-            self.dh_dict = dh_dict_path(self.name, self.latest_method)
+            if rhandler.job_id != job_id:
+                raise FitterError(f'Data Handler {self.name}: '
+                                  f'Result Handler {rhandler.method} '
+                                  f'still waiting on results from method {method}!')
 
-        logger.debug(f'saving the DataHandler dictionary to {self.dh_dict}')
+        # if Result Handler job ID is not set, do so
+        else:
+            logger.debug(f'setting Result Handler\'s job ID to {job_id}')
+            rhandler.job_id = job_id
 
-        with open(self.dh_dict, 'wb') as fout:
-            pickle.dump(dh_dict, fout)
+        # reset attributes that indicate that data was already collected
+        rhandler.collected_data = None
+        rhandler.t_exp_dif = None
+        rhandler.t_exp_dif_error = None
 
     def save_me(self):
 
@@ -197,14 +209,21 @@ class DataHandler:
             pickle.dump(self, fout)
 
     def results(self, method=None, cl=0.9):
+
         logger.info(f'getting results for {self.name} analyzed by {method}')
         if not method:
             method = self.latest_method
         rhandler = self.rhandlers[method]
 
-        rhandler.collect_results()
-        rhandler.get_t_exp_dif_distribution()
-        self.plotter.hist_t_exp_dif(rhandler, cl)
+        try:
+            rhandler.collect_results()
+            rhandler.get_t_exp_dif_distribution()
+            self.plotter.hist_t_exp_dif(rhandler, cl)
+        except KeyboardInterrupt:
+            pass
+
+        finally:
+            self.save_me()
 
     def get_good_lcIDs(self,
                        req_prepeak=None,
@@ -319,20 +338,30 @@ class DataHandler:
                 raise TypeError(f'Input {check_band} for check_band not understood!')
         return IDs, cut_IDs
 
+    @staticmethod
+    def dh_dict_path(name, method):
+        return f'{dh_dir}/{name}_{method}.pkl'
 
-def dh_dict_path(name, method):
-    return f'{dh_dict_dir}/{name}_{method}.pkl'
+    @staticmethod
+    def get_dhandler(name, path=None, simulation=True):
+        if os.path.isfile(DataHandler.dh_path(name)):
+            logger.debug(f'DataHandler for {name} already exists, loading it ...')
+            return DataHandler.load_dh(name)
+        else:
+            logger.debug(f'creating DataHandler for {name}')
+            return DataHandler(path, name, simulation)
 
+    @staticmethod
+    def load_dh(name):
+        name = DataHandler.dh_path(name)
+        with open(name, 'rb') as fin:
+            dhandler = pickle.load(fin)
+        logger.debug(f'loaded DataHandler {dhandler.name}')
+        return dhandler
 
-def dh_path(name):
-    return f'{dh_dict_dir}/{name}.pkl'
-
-
-def load_dh(name):
-    name = dh_path(name)
-    with open(name, 'rb') as fin:
-        dhandler = pickle.load(fin)
-    return dhandler
+    @staticmethod
+    def dh_path(name):
+        return f'{dh_dir}/{name}.pkl'
 
 
 class DataImportWarning(UserWarning):

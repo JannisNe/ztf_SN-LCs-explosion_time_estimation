@@ -39,7 +39,7 @@ class Fitter:
                                      dhandler.get_data(self.method_name),
                                      outdir,
                                      cache=self.cache_dir,
-                                     njobs=2000,
+                                     njobs=4,
                                      simulation_name=dhandler.name)
 
         logger.info(f'job-ID is {self.job_id}')

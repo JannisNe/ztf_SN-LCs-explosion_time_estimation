@@ -5,12 +5,15 @@ import logging
 import pickle
 import json
 from tqdm import tqdm
-from estimate_explosion_time.shared import get_custom_logger, main_logger_name
+from estimate_explosion_time.shared import get_custom_logger, main_logger_name, TqdmToLogger
 from estimate_explosion_time.cluster import wait_for_cluster
+from estimate_explosion_time.core.fit_data.fitlauncher.fitlauncher import Fitter
 
 
 logger = get_custom_logger(__name__)
 logger.setLevel(logging.getLogger(main_logger_name).getEffectiveLevel())
+tqdm_deb = TqdmToLogger(logger, level=logging.DEBUG)
+tqdm_info = TqdmToLogger(logger, level=logging.INFO)
 
 
 class ResultHandler:
@@ -49,12 +52,29 @@ class ResultHandler:
         self.t_exp_dif_error = [data['t_exp_dif_error'] for data in self.collected_data]
 
     def collect_results(self):
+
         if not self.collected_data:
-            wait_for_cluster(self.job_id)
-            if len(os.listdir(self.pickle_dir)) is not 0:
-                self.sub_collect_results()
+
+            job_status = wait_for_cluster(self.job_id)
+
+            # if all jobs are done, unset job id and continue with collecting results
+            if job_status:
+
+                self.job_id = None
+
+                if len(os.listdir(self.pickle_dir)) is not 0:
+                    self.sub_collect_results()
+                    collected_data_filename = f'{self.pickle_dir}.pkl'
+                    self.dhandler.collected_data = collected_data_filename
+                    self.save_data()
+                    self.dhandler.save_me()
+
+                else:
+                    raise ResultError(f'No result files in {self.pickle_dir}!')
+
             else:
-                raise ResultError(f'No result files in {self.pickle_dir}!')
+                raise ResultError(f'Exiting before all tasks were done.')
+
         else:
             logger.debug('results were already collected')
 
@@ -72,7 +92,7 @@ class SNCosmoResultHandler(ResultHandler):
         logger.info('collecting fit results')
 
         data = []
-        for file in tqdm(os.listdir(self.pickle_dir), desc='collecting fit results'):
+        for file in tqdm(os.listdir(self.pickle_dir), desc='collecting fit results', file=tqdm_info, mininterval=30):
 
             if file.startswith('.'):
                 continue
@@ -94,14 +114,7 @@ class SNCosmoResultHandler(ResultHandler):
             os.remove(full_file_path)
 
         self.collected_data = data
-
-        collected_data_filename = f'{self.pickle_dir}.pkl'
-
         self.combine_best_fits()
-
-        self.dhandler.collected_data = collected_data_filename
-        self.save_data()
-        self.dhandler.save_me()
 
     def combine_all_model_fits(self):
         """
@@ -168,7 +181,7 @@ class MosfitResultHandler(ResultHandler):
 
         t_exp_true = sim['meta']['t0']
 
-        for file in tqdm(os.listdir(self.pickle_dir), desc='collecting fit results'):
+        for file in tqdm(os.listdir(self.pickle_dir), desc='collecting fit results', file=tqdm_info, mininterval=30):
 
             if file.startswith('.'):
                 continue
@@ -202,11 +215,6 @@ class MosfitResultHandler(ResultHandler):
             }]
 
         self.collected_data = data
-
-        collected_data_filename = f'{self.pickle_dir}.pkl'
-        self.dhandler.collected_data = collected_data_filename
-        self.save_data()
-        self.dhandler.save_me()
 
 
 class ResultError(Exception):

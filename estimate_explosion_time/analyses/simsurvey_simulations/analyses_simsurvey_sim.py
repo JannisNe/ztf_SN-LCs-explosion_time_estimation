@@ -17,13 +17,13 @@ simsurvey_path = f'{simulation_dir}/{simulation_name}'
 
 simsurveyDH = DataHandler(simsurvey_path, simulation_name)
 
-for method in all_methods[:3]:
+for method in all_methods:
 
     fitter = Fitter(method)
 
     fitter.fit_lcs(simsurveyDH)
 
-simsurveyDH = load_dh(simulation_name)
+# simsurveyDH = load_dh(simulation_name)
 
 for method in all_methods:
 
