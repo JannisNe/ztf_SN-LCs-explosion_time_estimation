@@ -1,11 +1,35 @@
 import os
 import logging
 from pathlib import Path
+import io
+from tqdm import tqdm
 
 
 # ========================== #
 # = create a common logger = #
 # ========================== #
+
+
+# create a handler class to deal with tqdm progress bars
+class TqdmToLogger(io.StringIO):
+    """
+        Output stream for TQDM which will output to logger module instead of
+        the StdOut.
+    """
+    logger = None
+    level = None
+    buf = ''
+
+    def __init__(self, logger, level=None):
+        super(TqdmToLogger, self).__init__()
+        self.logger = logger
+        self.level = level or logging.INFO
+
+    def write(self, buf):
+        self.buf = buf.strip('\r\n\t ')
+
+    def flush(self):
+        self.logger.log(self.level, self.buf)
 
 
 main_logger_name = 'main script'
@@ -47,7 +71,9 @@ input_dir = f'{es_scratch_dir}/input'
 cache_dir = f'{storage_dir}/cache'
 pickle_dir = f'{storage_dir}/pickles'
 log_dir = f'{storage_dir}/logs'
-dh_dict_dir = f'{storage_dir}/DataHandler_dict'
+
+dh_dir = f'{storage_dir}/DataHandler'
+fh_dir = f'{storage_dir}/Fitter'
 
 simulation_dir = f'{input_dir}/simulations'
 real_data_dir = f'{input_dir}/real_data'
@@ -57,14 +83,15 @@ output_data = f'{output_dir}/data'
 
 
 all_dirs = [output_dir, storage_dir, input_dir,
-            cache_dir, pickle_dir, log_dir, dh_dict_dir,
+            cache_dir, pickle_dir, log_dir,
+            dh_dir, fh_dir,
             simulation_dir,real_data_dir,
             plots_dir, output_data]
 
 
 for dirname in all_dirs:
     if not os.path.isdir(dirname):
-        logging.info("Making Directory: {0}".format(dirname))
+        logger.info("Making Directory: {0}".format(dirname))
         os.makedirs(dirname)
     else:
         logger.info("Found Directory: {0}".format(dirname))
