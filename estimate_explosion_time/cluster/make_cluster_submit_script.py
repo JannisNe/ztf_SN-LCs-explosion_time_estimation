@@ -12,7 +12,8 @@ multiprocess_dir = os.path.dirname(os.path.realpath(__file__))
 desy_submit_file = f'{multiprocess_dir}/submitDESY.sh'
 
 
-def make_desy_submit_file(method_name, indir, outdir, cache):
+def make_desy_submit_file(method_name, indir, outdir, cache,
+                          hrss = '8G', hcpu = '72:00:00'):
 
     if 'sncosmo' in method_name:
 
@@ -34,9 +35,6 @@ def make_desy_submit_file(method_name, indir, outdir, cache):
     elif 'mosfit' in method_name:
 
         path_to_environment = mosfit_environment_path
-
-        hrss = '8G'
-        hcpu = '72:00:00'
 
         iterations = 600
         extrapolate = [20, 0]
@@ -72,10 +70,9 @@ def make_desy_submit_file(method_name, indir, outdir, cache):
            f"source {activate_path} \n" \
            f"conda activate {path_to_environment} \n" \
            "\n" \
-           "#trap \'printf \"\\n\\n exiting normally\\n\";exit 0\' 0 \n" \
-           "#trap \'printf \"\\n\\n got notification after soft limit was reached \\n\"\' SIGUSR1 \n" \
-           "#trap \'printf \"\\n\\n got notification of coming kill \\n commence clean-up\\n\";" \
-           "printf \"%d\\n\" $ID >> ~/mosfitNotDone.txt;" \
+           "trap \'printf \"\\n\\n exiting normally\\n\";exit 0\' 0 \n" \
+           "trap \'printf \"\\n\\n got notification after soft limit was reached \\n\"\' SIGUSR1 \n" \
+           "trap \'printf \"\\n\\n got notification of coming kill \\n clean-up\\n\";" \
            "cd ..;" \
            "rm -r $TMPDIR;" \
            "exit 3\' SIGUSR2 \n" \
