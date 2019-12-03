@@ -7,6 +7,7 @@ logger.debug('logging level is DEBUG')
 
 from estimate_explosion_time.shared import simulation_dir
 from estimate_explosion_time.core.data_prep.data import DataHandler
+from estimate_explosion_time.core.fit_data.fitlauncher.fitlauncher import Fitter
 from estimate_explosion_time.cluster import n_tasks
 
 
@@ -34,4 +35,11 @@ input('continue? ')
 
 for method in methods:
 
-    simsurveyDH.results(method)
+    fitter = Fitter.get_fitter(method)
+
+    logger.debug(
+        f'fitter method {fitter.method_name} \n'
+        f'job-id {fitter.job_id}'
+    )
+
+    fitter.fit_lcs(simsurveyDH)
