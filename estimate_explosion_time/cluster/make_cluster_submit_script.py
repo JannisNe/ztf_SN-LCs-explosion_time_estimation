@@ -13,7 +13,7 @@ desy_submit_file = f'{multiprocess_dir}/submitDESY.sh'
 
 
 def make_desy_submit_file(method_name, indir, outdir, cache,
-                          hrss = '8G', hcpu = '72:00:00'):
+                          hrss='8G', hcpu='23:59:00'):
 
     if 'sncosmo' in method_name:
 
@@ -54,7 +54,6 @@ def make_desy_submit_file(method_name, indir, outdir, cache,
            "#$-m a \n" \
            f"#$-l h_rss={hrss} \n" \
            f"#$-l h_cpu={hcpu} \n" \
-           "#$-l s_rt=72:00:00 \n" \
            "\n" \
            "date \n" \
            "\n" \
@@ -76,7 +75,8 @@ def make_desy_submit_file(method_name, indir, outdir, cache,
            "cd ..;" \
            "rm -r $TMPDIR;" \
            "exit 3\' SIGUSR2 \n" \
-           "\n"
+           "\n" \
+           "echo $PYTHONPATH \n"
 
     txt2 = "\n" \
            "mv $OUTNAME $OUTDIR \n" \
