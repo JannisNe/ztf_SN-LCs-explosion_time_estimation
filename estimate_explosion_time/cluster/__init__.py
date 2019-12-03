@@ -74,11 +74,16 @@ def wait_for_cluster(job_id):
             if i > 3:
 
                 n_running = n_tasks(job_id, " -s r")
+                n_waiting = n_tasks(job_id, " -s p")
+                if n_waiting < 1:
+                    waiting_str = 'no'
+                else:
+                    waiting_str = 'still'
 
                 logger.info(f'{time.asctime(time.localtime())} - Job-ID {job_id}: '
                             f'{n_total} entries in queue. '
-                            f'Of these, {n_running} are running tasks, and '
-                            f'{n_total-n_running} are jobs still waiting to be executed.')
+                            f'Of these, {n_running} are running tasks, and there are '
+                            f'{waiting_str} jobs still waiting to be executed.')
                 i = 0
                 j += 1
 
