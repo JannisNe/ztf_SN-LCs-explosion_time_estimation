@@ -2,6 +2,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 import logging
+from scipy.stats import kde
+from scipy.optimize import curve_fit
 from estimate_explosion_time.shared import plots_dir, get_custom_logger, main_logger_name
 
 
@@ -14,28 +16,21 @@ class Plotter:
 
     def __init__(self, dhandler):
         self.dhandler = dhandler
+        self.use_indices = None
         self.dir = self.get_my_root_dir()
         self.update_dir()
 
     def hist_t_exp_dif(self, rhandler, cl):
+        """
 
-        # def plot_dist(tdif, tdif_e, tmean, IC, cl, chi2=None, filename=None, xlabel=None, ylabel=None, title=None):
-            # plot the distribution of a variable (namely Delta t0) and optionally its relation to
-            # red_chi2
-            # Input
-            #   filename: filename to be passed to savefig, if not given figure is returned
-            #   tdif, tmean, IC: the variable to be plotted with its mean an confidence interval
-            #   cl: the confidence level of the confidence interval
-            #   xlabel, ylabel, title: to be passed to pyplot
-            #   chi2: if given the relation tdif-chi2 is plotted
-            # Output
-            #   figure if filename is not given
+        :param rhandler:
+        :param cl:
+        :return:
+        """
+        logger.debug('plotting histogramm of elta t_exp')
 
-        self.dir = f'{self.get_my_root_dir()}/{rhandler.method}'
-        self.update_dir()
-
-        tdif = rhandler.t_exp_dif
-        tdif_e = rhandler.t_exp_dif_error
+        tdif = np.array(rhandler.t_exp_dif)[self.dhandler.selected_indices]
+        tdif_e = np.array(rhandler.t_exp_dif_error)[self.dhandler.selected_indices]
 
         ic = [0, 0]
         ic[0], tmean, ic[1] = np.quantile(tdif, [0.5-cl/2, 0.5, 0.5+cl/2])
@@ -58,7 +53,49 @@ class Plotter:
         ax[0].set_title(f'{self.dhandler.name}\n{rhandler.method}')
         ax[0].legend()
 
+        logger.debug(f'saving figure under {self.dir}/t_exp_dif.pdf')
+
         plt.savefig(f'{self.dir}/t_exp_dif.pdf')
+        plt.close()
+
+    def plot_tdif_tdife(self, rhandler):
+        """
+
+        :param rhandler:
+        :return:
+        """
+
+        logger.debug(f'plotting delta t_exp against fitting error')
+
+        xref = np.array([1e-3, 1e2])
+        yref = xref
+
+        x = np.log(abs(np.array(rhandler.t_exp_dif)[self.dhandler.selected_indices]))
+        y = np.log(np.array(rhandler.t_exp_dif_error)[self.dhandler.selected_indices])
+        nbins = 200
+
+        def fitfct(xdat, a, b): return a * xdat + b
+
+        pop, pcov = curve_fit(fitfct, x, y)
+
+        k = kde.gaussian_kde([x, y])
+        xi, yi = np.mgrid[x.min():x.max():nbins * 1j, y.min():y.max():nbins * 1j]
+        zi = k(np.vstack([xi.flatten(), yi.flatten()]))
+
+        fig, ax = plt.subplots()
+        ax.plot(np.log(xref), np.log(yref), '--r', label='reference linear relation')
+        ax.plot(x, pop[0] * x + pop[1], '-r', label='fitted linear relation')
+        ax.contour(xi, yi, zi.reshape(xi.shape), color='k', label='contour')
+        ax.set_xlim([min(x), max(x)])
+        ax.set_ylim([min(y), max(y)])
+        ax.plot(x, y, 'ko', ms=0.5, alpha=0.5, label='data')
+        ax.set_xlabel('$log(|\Delta t_{exp}|)$')
+        ax.set_ylabel('$log(t_{exp,err})$')
+        ax.legend()
+
+        logger.debug(f'figure saved to {self.dir}/difference_error_relation.pdf')
+
+        plt.savefig(f'{self.dir}/difference_error_relation.pdf')
         plt.close()
 
     def update_dir(self):
