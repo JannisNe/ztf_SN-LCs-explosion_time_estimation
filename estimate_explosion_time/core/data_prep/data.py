@@ -15,7 +15,6 @@ from estimate_explosion_time.core.fit_data.fitlauncher.fitlauncher import Fitter
 
 logger = get_custom_logger(__name__)
 logger.setLevel(logging.getLogger(main_logger_name).getEffectiveLevel())
-logger.debug('logging in data.py is also debug')
 
 
 class DataHandler:
@@ -33,6 +32,8 @@ class DataHandler:
         self.collected_data = None
         self.rhandlers = {}
         self.plotter = Plotter(self)
+        self.selected_indices = None
+        self.selection_string = 'all'
 
         if simulation:
             diri = simulation_dir
@@ -58,7 +59,7 @@ class DataHandler:
                      f'{newdir2}',
                      DataImportWarning)
 
-                iadd +=1
+                iadd += 1
                 newdir1 = newdir2
 
             self.dir = newdir1
@@ -137,11 +138,21 @@ class DataHandler:
                 if col not in lc.keys():
 
                     lc[col] = [add_columns[col]] * len(lc)
-                    if col == 'name': lc[col] = [f'{ind}'] * len(lc)
-                    if col == 'redshift': lc[col] = [meta['z'][ind]] * len(lc)
-                    if col == 'ebv': lc[col] = [meta['hostebv'][ind]] * len(lc)
-                    if col == 'ID': lc[col] = [int(meta['idx_orig'][ind])] * len(lc)
-                    if col == 'lumdist': lc[col] = [meta['lumdist'][ind]] * len(lc)
+
+                    if col == 'name':
+                        lc[col] = [f'{ind}'] * len(lc)
+
+                    if col == 'redshift':
+                        lc[col] = [meta['z'][ind]] * len(lc)
+
+                    if col == 'ebv':
+                        lc[col] = [meta['hostebv'][ind]] * len(lc)
+
+                    if col == 'ID':
+                        lc[col] = [int(meta['idx_orig'][ind])] * len(lc)
+
+                    if col == 'lumdist':
+                        lc[col] = [meta['lumdist'][ind]] * len(lc)
 
                 else:
                     raise IndexError(f'Column {col} already exists!')
@@ -208,29 +219,47 @@ class DataHandler:
         with open(self.save_path, 'wb') as fout:
             pickle.dump(self, fout)
 
-    def results(self, method=None, cl=0.9):
+    def results(self, method=None, cl=0.9, **kwargs):
 
         logger.info(f'getting results for {self.name} analyzed by {method}')
         if not method:
             method = self.latest_method
         rhandler = self.rhandlers[method]
 
+        self.plotter.dir = f'{self.plotter.get_my_root_dir()}/{method}'
+        self.plotter.update_dir()
+
+        self.select_and_adjust_selection_string(**kwargs)
+        self.plotter.dir += f'/{self.selection_string}'
+        self.plotter.update_dir()
+
         try:
             rhandler.collect_results()
             rhandler.get_t_exp_dif_distribution()
             self.plotter.hist_t_exp_dif(rhandler, cl)
+            self.plotter.plot_tdif_tdife(rhandler)
         except KeyboardInterrupt:
             pass
 
         finally:
             self.save_me()
 
-    def get_good_lcIDs(self,
-                       req_prepeak=None,
-                       req_postpeak=None,
-                       req_max_timedif=None,
-                       req_std=None,
-                       check_band='any'):
+    def select_and_adjust_selection_string(self, **kwargs):
+
+        if len(kwargs.keys()) < 1:
+            self.selection_string = 'all'
+        else:
+            for kw_item in kwargs.items():
+                self.selection_string += f'_{kw_item[0]}{kw_item[1]}'
+
+        self.select(**kwargs)
+
+    def select(self,
+               req_prepeak=None,
+               req_postpeak=None,
+               req_max_timedif=None,
+               req_std=None,
+               check_band='any'):
         """
         Selects lightcurves based on the number of detections before and after the peak,
         a maximum time difference between detections and a measure for the spread of the data points.
@@ -249,6 +278,7 @@ class DataHandler:
         with open(self._sncosmo_data_, 'rb') as f:
             data = pickle.load(f, encoding='latin1')
 
+        indices = []
         IDs = []
         cut_IDs = []
 
@@ -266,11 +296,14 @@ class DataHandler:
                 else:
                     raise (TypeError('Input type has to be int, float or dict'))
 
-        for lc, ID in zip(data['lcs'], data['meta']['idx_orig']):
+        for j, (lc, ID) in enumerate(zip(data['lcs'], data['meta']['idx_orig'])):
 
             bands = np.unique([lc['band']])
             band_masks = {}
-            for band in bands: band_masks[band] = lc['band'] == band
+
+            for band in bands:
+                band_masks[band] = lc['band'] == band
+
             comply_prepeak = {}
             comply_postpeak = {}
             comply_max_timedif = {}
@@ -326,17 +359,22 @@ class DataHandler:
                 if np.any(list(comply_prepeak.values())) & np.any(list(comply_postpeak.values())) & \
                         np.any(list(comply_max_timedif.values())) & np.any(list(comply_std.values())):
                     IDs.append(ID)
+                    indices.append(j)
                 else:
                     cut_IDs.append(ID)
             elif check_band == 'all':
                 if np.all(list(comply_prepeak.values())) & np.all(list(comply_postpeak.values())) & \
                         np.all(list(comply_max_timedif.values())) & np.all(list(comply_std.values())):
                     IDs.append(ID)
+                    indices.append(j)
                 else:
                     cut_IDs.append(ID)
             else:
                 raise TypeError(f'Input {check_band} for check_band not understood!')
-        return IDs, cut_IDs
+
+        self.selected_indices = indices
+
+
 
     @staticmethod
     def dh_dict_path(name, method):
@@ -345,10 +383,10 @@ class DataHandler:
     @staticmethod
     def get_dhandler(name, path=None, simulation=True):
         if os.path.isfile(DataHandler.dh_path(name)):
-            logger.debug(f'DataHandler for {name} already exists, loading it ...')
+            logger.info(f'DataHandler for {name} already exists, loading it ...')
             return DataHandler.load_dh(name)
         else:
-            logger.debug(f'creating DataHandler for {name}')
+            logger.info(f'creating DataHandler for {name}')
             return DataHandler(path, name, simulation)
 
     @staticmethod
