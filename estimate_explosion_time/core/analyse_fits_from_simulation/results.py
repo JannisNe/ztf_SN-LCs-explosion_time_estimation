@@ -48,8 +48,8 @@ class ResultHandler:
 
         logger.info('getting distribution of the difference between true and fitted explosion time')
 
-        self.t_exp_dif = [data['t_exp_dif'] for data in self.collected_data]
-        self.t_exp_dif_error = [data['t_exp_dif_error'] for data in self.collected_data]
+        self.t_exp_dif = np.array([data['t_exp_dif'] for data in self.collected_data])
+        self.t_exp_dif_error = np.array([data['t_exp_dif_error'] for data in self.collected_data])
 
     def collect_results(self):
 
