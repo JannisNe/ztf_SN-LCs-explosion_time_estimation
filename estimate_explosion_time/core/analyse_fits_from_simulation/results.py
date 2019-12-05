@@ -55,7 +55,14 @@ class ResultHandler:
 
         if not self.collected_data:
 
-            job_status = wait_for_cluster(self.job_id)
+            if self.job_id:
+                job_status = wait_for_cluster(self.job_id)
+            else:
+                inp = input('No job id specified. Go on trying to collect fit results? ')
+                if inp in ['y', 'yes']:
+                    job_status = True
+                else:
+                    raise ResultError('no job_id specified')
 
             # if all jobs are done, unset job id and continue with collecting results
             if job_status:
@@ -91,11 +98,18 @@ class SNCosmoResultHandler(ResultHandler):
 
         logger.info('collecting fit results')
 
-        data = []
-        for file in tqdm(os.listdir(self.pickle_dir), desc='collecting fit results', file=tqdm_info, mininterval=30):
+        listed_pickle_dir = os.listdir(self.pickle_dir)
+
+        # indices are file name minus one as file names start at 1, indices at 0!
+        indices = [int(file.split('.')[0])-1 for file in listed_pickle_dir]
+
+        data = [{}] * (max(indices) + 1)
+        for file in tqdm(listed_pickle_dir, desc='collecting fit results', file=tqdm_info, mininterval=30):
 
             if file.startswith('.'):
                 continue
+
+            ind = int(file.split('.')[0])-1
 
             full_file_path = f'{self.pickle_dir}/{file}'
             with open(full_file_path, 'rb') as f:
@@ -107,11 +121,17 @@ class SNCosmoResultHandler(ResultHandler):
             else:
                 t_exp_true = t_exp_true[0]
 
-            data += [{
+            # data += [{
+            #     'fit_output': Table(dat),
+            #     't_exp_true': t_exp_true
+            # }]
+
+            data[ind] = {
                 'fit_output': Table(dat),
                 't_exp_true': t_exp_true
-            }]
-            os.remove(full_file_path)
+            }
+
+            # os.remove(full_file_path)
 
         self.collected_data = data
         self.combine_best_fits()
@@ -151,13 +171,16 @@ class SNCosmoResultHandler(ResultHandler):
 
             fit_output = res['fit_output']
 
-            if 'simsurvey' in self.dhandler.name:
-                fit_output = fit_output[['nugent' not in model for model in fit_output['model']]]
+            nugent_mask = \
+                ['nugent' not in model for model in fit_output['model']] \
+                if 'simsurvey' in self.dhandler.name \
+                else [True] * len(fit_output)
 
             chi2 = fit_output['red_chi2']
-            mask = chi2 <= min(chi2) * (1 + 1 / 2)
+            mask = chi2 <= (min(chi2[nugent_mask]) * (3))
 
             res['t_exp_fit'] = np.median(fit_output['t_exp_fit'][mask])
+            res['mask'] = np.array(mask) & np.array(nugent_mask)
 
             cl = 0.9
             error_quantile = np.quantile(fit_output['t0_e'][mask], [0.5-cl/2, 0.5+cl/2])
