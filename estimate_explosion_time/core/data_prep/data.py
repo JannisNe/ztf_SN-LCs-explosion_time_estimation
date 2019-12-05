@@ -31,7 +31,6 @@ class DataHandler:
         self.save_path = DataHandler.dh_path(self.name)
         self.collected_data = None
         self.rhandlers = {}
-        self.plotter = Plotter(self)
         self.selected_indices = None
         self.selection_string = 'all'
 
@@ -226,18 +225,14 @@ class DataHandler:
             method = self.latest_method
         rhandler = self.rhandlers[method]
 
-        self.plotter.dir = f'{self.plotter.get_my_root_dir()}/{method}'
-        self.plotter.update_dir()
-
-        self.select_and_adjust_selection_string(**kwargs)
-        self.plotter.dir += f'/{self.selection_string}'
-        self.plotter.update_dir()
+        plotter = Plotter(self, method)
 
         try:
             rhandler.collect_results()
             rhandler.get_t_exp_dif_distribution()
-            self.plotter.hist_t_exp_dif(rhandler, cl)
-            self.plotter.plot_tdif_tdife(rhandler)
+            plotter.hist_t_exp_dif(cl)
+            plotter.plot_tdif_tdife()
+            plotter.plot_lcs_where_fit_fails(dt=2.5, n=10)
         except KeyboardInterrupt:
             pass
 
@@ -249,8 +244,12 @@ class DataHandler:
         if len(kwargs.keys()) < 1:
             self.selection_string = 'all'
         else:
+            self.selection_string = ''
             for kw_item in kwargs.items():
-                self.selection_string += f'_{kw_item[0]}{kw_item[1]}'
+                if kw_item[1] is not None:
+                    self.selection_string += f'{kw_item[0]}{kw_item[1]}_'
+
+            logger.debug(f'selection string is {self.selection_string}')
 
         self.select(**kwargs)
 
@@ -296,7 +295,8 @@ class DataHandler:
                 else:
                     raise (TypeError('Input type has to be int, float or dict'))
 
-        for j, (lc, ID) in enumerate(zip(data['lcs'], data['meta']['idx_orig'])):
+        # TODO: remove the limitation to the frist 100 events
+        for j, (lc, ID) in enumerate(zip(data['lcs'][:100], data['meta']['idx_orig'][:100])):
 
             bands = np.unique([lc['band']])
             band_masks = {}
@@ -373,6 +373,9 @@ class DataHandler:
                 raise TypeError(f'Input {check_band} for check_band not understood!')
 
         self.selected_indices = indices
+
+        selected_percentage = len(indices)/len(data['lcs'])
+        logger.debug('selected {0:.2f}% of all lightcurves'.format(selected_percentage*100))
 
 
 
