@@ -3,7 +3,7 @@ import numpy as np
 import pickle
 import random
 import argparse
-import estimate_explosion_time.sncosmo_register_ztf_bands
+# import estimate_explosion_time.sncosmo_register_ztf_bands
 from estimate_explosion_time.core.fit_data.sncosmo import sncosmo_model_names as model_names_dict
 from estimate_explosion_time.core.analyse_fits_from_simulation.get_source_explosion_time.find_explosion_time \
     import get_explosion_time
