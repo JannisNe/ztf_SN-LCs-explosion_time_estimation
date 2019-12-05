@@ -3,6 +3,8 @@ import logging
 from pathlib import Path
 import io
 from tqdm import tqdm
+import sncosmo
+from numpy import loadtxt
 
 
 # ========================== #
@@ -52,6 +54,12 @@ logger.setLevel(logging.getLogger(main_logger_name).getEffectiveLevel())
 # = create directory substructure = #
 # ================================= #
 
+
+class DirectoryError(Exception):
+    def __init__(self, msg):
+        self.msg = msg
+
+
 es_dir = os.path.dirname(os.path.realpath(__file__)) + "/"
 
 root_dir = ''
@@ -62,7 +70,8 @@ try:
     es_scratch_dir = os.environ['EXPLOSION_TIME_ESTIMATION_SCRATCH_DIR']
 except KeyError:
     es_scratch_dir = str(Path.home())
-    logger.warning("No scratch directory has been set. Using home directory as default.")
+    raise DirectoryError('No scratch directory has been set!')
+    # logger.warning("No scratch directory has been set. Using home directory as default.")
 
 output_dir = f'{es_scratch_dir}/output'
 storage_dir = f'{es_scratch_dir}/storage'
