@@ -107,13 +107,19 @@ def wait_for_cluster(job_id):
                 logger.info(f'deleting job {job_id}')
                 delete_cmd = f'qdel {job_id}'
                 os.system(delete_cmd)
-                return True
+                ret = True
 
             else:
-                return False
+                ret = False
 
         else:
-            return True
+            ret = True
+
+    # give the system time to copy all results
+    logger.info('waiting ...')
+    time.sleep(20)
+
+    return ret
 
 
 def n_tasks(job_id=None, flags='', print_full=False):
