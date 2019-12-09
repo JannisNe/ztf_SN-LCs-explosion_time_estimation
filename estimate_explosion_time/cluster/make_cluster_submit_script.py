@@ -1,5 +1,6 @@
 import logging
 import os
+import math
 from estimate_explosion_time.shared import \
     root_dir, es_scratch_dir, activate_path, environment_path, mosfit_environment_path, \
     get_custom_logger, main_logger_name
@@ -12,8 +13,10 @@ multiprocess_dir = os.path.dirname(os.path.realpath(__file__))
 desy_submit_file = f'{multiprocess_dir}/submitDESY.sh'
 
 
-def make_desy_submit_file(method_name, indir, outdir, cache,
-                          hrss='8G', hcpu='23:59:00'):
+def make_desy_submit_file(method_name, indir, outdir, ntasks, cache,
+                          hrss='8G', hcpu='23:59:00', tasks_in_group=100):
+
+    njobs = int(math.ceil( ntasks / tasks_in_group))
 
     if 'sncosmo' in method_name:
 
@@ -21,10 +24,10 @@ def make_desy_submit_file(method_name, indir, outdir, cache,
         path_to_environment = environment_path
 
         hrss = '1G'
-        hcpu = '02:00:00'
 
-        fill = "OUTNAME=${ID}.pkl \n" \
-               f"python {script} $ID $INDIR $OUTNAME"
+        fill = "    OUTNAME=${c}.pkl \n" \
+               "    echo 'doing sncosmo fit' \n" \
+              f"    python {script} $c $INDIR $OUTNAME"
 
         if 'mcmc' in method_name:
             fill += f' --method mcmc'
@@ -36,13 +39,14 @@ def make_desy_submit_file(method_name, indir, outdir, cache,
 
         path_to_environment = mosfit_environment_path
 
-        iterations = 600
+        iterations = 500
         extrapolate = [20, 0]
-        walkers = 700
+        walkers = 100
 
-        fill = 'OUTNAME=products/${ID}.json \n' \
-               'printf \'n\\n%d\\nn\\nn\\nn\' $ID | ' \
-               'mosfit -e ${INDIR}/${ID}.csv -m default --prefer-fluxes --quiet ' \
+        fill = '    OUTNAME=products/${c}.json \n' \
+               '    echo "doing mosfit fit" \n' \
+               '    printf \'n\\n%d\\nn\\nn\\nn\' $c | ' \
+               'mosfit -e ${INDIR}/${c}.csv -m default --prefer-fluxes --quiet ' \
                f'-i {iterations} -E {extrapolate[0]} {extrapolate[1]} -N {walkers}'
 
     else:
@@ -50,6 +54,7 @@ def make_desy_submit_file(method_name, indir, outdir, cache,
 
     txt1 = "#!/bin/zsh \n" \
            "#$-notify \n" \
+           f"#$-t 1-{njobs} \n" \
            "#$-j y \n" \
            "#$-m a \n" \
            f"#$-l h_rss={hrss} \n" \
@@ -58,12 +63,12 @@ def make_desy_submit_file(method_name, indir, outdir, cache,
            "date \n" \
            "\n" \
            "ID=$SGE_TASK_ID \n" \
+           "echo 'task-ID is ' $ID '\\n'\n" \
+           f"ntasks={ntasks} \n" \
+           f"tasks_in_group={tasks_in_group} \n" \
            f"INDIR={indir} \n" \
            f"OUTDIR={outdir} \n" \
-           "TMPDIR=" + cache + "/tmp${ID} \n" \
            "\n" \
-           "mkdir $TMPDIR \n" \
-           "cd $TMPDIR \n" \
            f"export PYTHONPATH={root_dir} \n" \
            f"export EXPLOSION_TIME_ESTIMATION_SCRATCH_DIR={es_scratch_dir} \n" \
            f"source {activate_path} \n" \
@@ -76,12 +81,29 @@ def make_desy_submit_file(method_name, indir, outdir, cache,
            "rm -r $TMPDIR;" \
            "exit 3\' SIGUSR2 \n" \
            "\n" \
-           "echo $PYTHONPATH \n"
+           "echo 'PYTHONPATH is ' $PYTHONPATH \n" \
+           "\n" \
+           "itr1=$(expr $ID \* $tasks_in_group - $tasks_in_group + 1) \n" \
+           "itr2=$(expr $ID \* $tasks_in_group) \n" \
+           "echo 'iterating from ' $itr1 ' to ' $itr2 \n" \
+           "\n" \
+           "for (( c=$itr1; c<=$itr2; c++ )) \n" \
+           "do \n" \
+           "    echo 'loop variable is ' $c '\\n'\n" \
+           "    if [[ $c == $(expr $ntasks + 1) ]] \n" \
+           "    then \n" \
+           "        echo 'exceeded n_tasks at ' $c \n" \
+           "        break \n" \
+           "    fi \n" \
+           "    TMPDIR=" + cache + "/tmp${c} \n" \
+           "    mkdir $TMPDIR \n" \
+           "    cd $TMPDIR \n"
 
     txt2 = "\n" \
-           "mv $OUTNAME $OUTDIR \n" \
-           "cd .. \n" \
-           "rm -r $TMPDIR \n" \
+           "    mv $OUTNAME $OUTDIR \n" \
+           "    cd .. \n" \
+           "    rm -r $TMPDIR \n" \
+           "done \n" \
            "exit 0 \n" \
            "\n" \
            "date "

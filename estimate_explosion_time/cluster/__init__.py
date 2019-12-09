@@ -18,7 +18,7 @@ username = os.path.basename(os.environ['HOME'])
 cmd = f'qstat -u {username}'
 
 
-def submit_to_desy(method_name, indir, outdir, njobs, cache=cache_dir, simulation_name=None):
+def submit_to_desy(method_name, simulation_name=None, **kwargs):
 
     name = f'{method_name}_{simulation_name}'
 
@@ -28,11 +28,12 @@ def submit_to_desy(method_name, indir, outdir, njobs, cache=cache_dir, simulatio
         if name in file:
             os.remove(log_dir + '/' + file)
 
-    submit_file = make_desy_submit_file(method_name, indir, outdir, cache)
+    submit_file = make_desy_submit_file(method_name, **kwargs)
 
-    submit_cmd = 'qsub ' \
-                 '-t 1-{0} ' \
-                 '-o {1} '.format(njobs, log_dir,)
+    # TODO: remove this
+    input('continue? ')
+
+    submit_cmd = 'qsub -o {0} '.format(log_dir)
 
     if simulation_name:
         submit_cmd += f'-N {name} '
@@ -138,7 +139,7 @@ def n_tasks(job_id=None, flags='', print_full=False):
     ids = np.array([int(s.split(' ')[2]) for s in st.split('\n')[2:-1]])
 
     if print_full:
-        logger.info(st)
+        logger.info('\n' + st)
 
     if job_id:
         return len(ids[ids == job_id])

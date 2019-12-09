@@ -79,7 +79,7 @@ class Fitter:
 
         # If outdir does contain stuff, clear it. That deletes old fit results, that stay after
         # collect_results in the case of Mosfit
-        for file in tqdm(os.listdir(outdir), desc='clearing fitter output directory', file=tqdm_info, mininterval=30):
+        for file in tqdm(os.listdir(outdir), desc='clearing fitter output directory', file=tqdm_info, mininterval=5):
             os.remove(f'{outdir}/{file}')
 
         self.cache_dir = f'{self.get_cache_root()}/{dhandler.name}'
@@ -87,12 +87,19 @@ class Fitter:
 
         logger.info('submitting jobs to DESY cluster')
 
-        # TODO: set njobs to dhandler.nlcs
-        self.job_id = submit_to_desy(self.method_name,
-                                     dhandler.get_data(self.method_name),
-                                     outdir,
+        # TODO: set ntasks to dhandler.nlcs
+
+        if 'mosfit' in self.method_name:
+            tasks_in_group = 1
+        else:
+            tasks_in_group = 50
+
+        self.job_id = submit_to_desy(method_name=self.method_name,
+                                     indir=dhandler.get_data(self.method_name),
+                                     outdir=outdir,
                                      cache=self.cache_dir,
-                                     njobs=dhandler.nlcs,
+                                     ntasks=dhandler.nlcs,
+                                     tasks_in_group=tasks_in_group,
                                      simulation_name=dhandler.name)
 
         logger.info(f'job-ID is {self.job_id}')
