@@ -197,14 +197,19 @@ class DataHandler:
         if rhandler.job_id:
 
             if rhandler.job_id != job_id:
-                raise FitterError(f'Data Handler {self.name}: '
-                                  f'Result Handler {rhandler.method} '
-                                  f'still waiting on results from method {method}!')
+
+                inpt = input('continue and overwrite? ')
+
+                if inpt in ['y', 'yes']:
+                    pass
+                else:
+                    raise FitterError(f'Data Handler {self.name}: '
+                                      f'Result Handler {rhandler.method} '
+                                      f'still waiting on results from method {method}!')
 
         # if Result Handler job ID is not set, do so
-        else:
-            logger.debug(f'setting Result Handler\'s job ID to {job_id}')
-            rhandler.job_id = job_id
+        logger.debug(f'setting Result Handler\'s job ID to {job_id}')
+        rhandler.job_id = job_id
 
         # reset attributes that indicate that data was already collected
         rhandler.collected_data = None
@@ -227,6 +232,8 @@ class DataHandler:
 
         plotter = Plotter(self, method)
 
+        self.select_and_adjust_selection_string(**kwargs)
+
         try:
             rhandler.collect_results()
             rhandler.get_t_exp_dif_distribution()
@@ -243,6 +250,7 @@ class DataHandler:
 
         if len(kwargs.keys()) < 1:
             self.selection_string = 'all'
+            self.selected_indices = list(range(self.nlcs))
         else:
             self.selection_string = ''
             for kw_item in kwargs.items():
@@ -251,7 +259,7 @@ class DataHandler:
 
             logger.debug(f'selection string is {self.selection_string}')
 
-        self.select(**kwargs)
+            self.select(**kwargs)
 
     def select(self,
                req_prepeak=None,
@@ -272,7 +280,6 @@ class DataHandler:
         :return: list of IDs that comply with the requests
                  list of IDs that don't comply
         """
-        # TODO: test this
 
         with open(self._sncosmo_data_, 'rb') as f:
             data = pickle.load(f, encoding='latin1')
@@ -295,8 +302,7 @@ class DataHandler:
                 else:
                     raise (TypeError('Input type has to be int, float or dict'))
 
-        # TODO: remove the limitation to the frist 100 events
-        for j, (lc, ID) in enumerate(zip(data['lcs'][:100], data['meta']['idx_orig'][:100])):
+        for j, (lc, ID) in enumerate(zip(data['lcs'], data['meta']['idx_orig'])):
 
             bands = np.unique([lc['band']])
             band_masks = {}
