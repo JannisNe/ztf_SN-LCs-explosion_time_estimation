@@ -103,6 +103,16 @@ class SNCosmoResultHandler(ResultHandler):
         # indices are file name minus one as file names start at 1, indices at 0!
         indices = [int(file.split('.')[0])-1 for file in listed_pickle_dir]
 
+        # get a list of indices, that are not a file in result directory
+        # if this list is not empty, raise Error
+        missing_indices = []
+        for i in range(self.dhandler.nlcs):
+            if i not in indices:
+                missing_indices.append(i)
+
+        if len(missing_indices) > 0:
+            raise ResultError(f'No result files for indices {missing_indices}')
+
         data = [{}] * (max(indices) + 1)
         for file in tqdm(listed_pickle_dir, desc='collecting fit results', file=tqdm_info, mininterval=30):
 
@@ -120,11 +130,6 @@ class SNCosmoResultHandler(ResultHandler):
                 raise ResultError(f'different explosion times for the same lightcurve')
             else:
                 t_exp_true = t_exp_true[0]
-
-            # data += [{
-            #     'fit_output': Table(dat),
-            #     't_exp_true': t_exp_true
-            # }]
 
             data[ind] = {
                 'fit_output': Table(dat),
