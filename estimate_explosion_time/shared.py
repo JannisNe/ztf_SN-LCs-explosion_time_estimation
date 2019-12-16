@@ -115,3 +115,34 @@ mosfit_environment_path = '/afs/ifh.de/user/n/neckerja/scratch/envs/mosfit_env'
 # =========== #
 
 all_methods = ['sncosmo_chi2', 'sncosmo_mcmc', 'sncosmo_nester', 'mosfit']
+
+
+# ============================================ #
+# = set magnitude system and flux zero point = #
+# ============================================ #
+
+magnitude_system = 'ab'
+flux_zp = 25
+
+
+# ======================================= #
+# = set colors for the wavelength bands = #
+# ======================================= #
+
+def bandcolors(band):
+
+    color_dict = {
+        'ztfg': 'red',
+        'ztfr': 'blue',
+        'ztfi': 'green',
+        'desi': 'green'
+    }
+
+    if band in color_dict.keys():
+        return color_dict[band]
+    else:
+        for key in color_dict.keys():
+            if band in key:
+                return color_dict[key]
+
+    raise Exception(f'No color specified for band {band}, type(band)={type(band)}!')

@@ -8,7 +8,8 @@ from astropy.io import ascii
 import numpy as np
 from estimate_explosion_time.shared import simulation_dir, real_data_dir, dh_dir,\
     get_custom_logger, main_logger_name
-from estimate_explosion_time.core.analyse_fits_from_simulation.results import SNCosmoResultHandler, MosfitResultHandler
+from estimate_explosion_time.core.analyse_fits_from_simulation.results import SNCosmoResultHandler, \
+    MosfitResultHandler, ResultError
 from estimate_explosion_time.core.analyse_fits_from_simulation.plots import Plotter
 from estimate_explosion_time.core.fit_data.fitlauncher.fitlauncher import FitterError
 
@@ -198,6 +199,10 @@ class DataHandler:
 
             if rhandler.job_id != job_id:
 
+                logger.warning(f'Data Handler {self.name}: '
+                               f'Result Handler {rhandler.method} '
+                               f'still waiting on results from method {method}!')
+
                 inpt = input('continue and overwrite? ')
 
                 if inpt in ['y', 'yes']:
@@ -223,7 +228,7 @@ class DataHandler:
         with open(self.save_path, 'wb') as fout:
             pickle.dump(self, fout)
 
-    def results(self, method=None, cl=0.9, **kwargs):
+    def results(self, method=None, cl=0.9):
 
         logger.info(f'getting results for {self.name} analyzed by {method}')
         if not method:
@@ -232,7 +237,8 @@ class DataHandler:
 
         plotter = Plotter(self, method)
 
-        self.select_and_adjust_selection_string(**kwargs)
+        if not self.selected_indices:
+            raise ResultError('No selection has been made!')
 
         try:
             rhandler.collect_results()
@@ -382,8 +388,6 @@ class DataHandler:
 
         selected_percentage = len(indices)/len(data['lcs'])
         logger.debug('selected {0:.2f}% of all lightcurves'.format(selected_percentage*100))
-
-
 
     @staticmethod
     def dh_dict_path(name, method):

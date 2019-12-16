@@ -56,7 +56,7 @@ class Fitter:
         self.update_cache_dir()
         self.job_id = None
 
-    def fit_lcs(self, dhandler):
+    def fit_lcs(self, dhandler, **kwargs):
 
 
         dh_job_id = None
@@ -94,13 +94,22 @@ class Fitter:
         else:
             tasks_in_group = 50
 
-        self.job_id = submit_to_desy(method_name=self.method_name,
-                                     indir=dhandler.get_data(self.method_name),
-                                     outdir=outdir,
-                                     cache=self.cache_dir,
-                                     ntasks=dhandler.nlcs,
-                                     tasks_in_group=tasks_in_group,
-                                     simulation_name=dhandler.name)
+        # default keyword arguments for submit_to_desy
+        default_kwargs = {
+            'method_name': self.method_name,
+            'indir': dhandler.get_data(self.method_name),
+            'outdir': outdir,
+            'cache': self.cache_dir,
+            'ntasks': dhandler.nlcs,
+            'tasks_in_group': tasks_in_group,
+            'simulation_name': dhandler.name
+        }
+
+        # if any of the keyword arguments are explicitly given, uyse these
+        kwargs_to_pass = {key: kwargs[key] if key in kwargs.keys() else default_kwargs[key]
+                          for key in default_kwargs.keys()}
+
+        self.job_id = submit_to_desy(**kwargs_to_pass)
 
         logger.info(f'job-ID is {self.job_id}')
 
