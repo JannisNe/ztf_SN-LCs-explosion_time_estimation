@@ -21,7 +21,7 @@ class ResultHandler:
     def __init__(self, dhandler, job_id):
 
         logger.debug(f'configuring ResultHandler for dhandler {dhandler.name} '
-                      f'using the method {dhandler.latest_method}')
+                     f'using the method {dhandler.latest_method}')
 
         if dhandler.pickle_dir:
             self.pickle_dir = dhandler.pickle_dir
@@ -70,7 +70,23 @@ class ResultHandler:
                 self.job_id = None
 
                 if len(os.listdir(self.pickle_dir)) is not 0:
-                    self.sub_collect_results()
+
+                    listed_pickle_dir = os.listdir(self.pickle_dir)
+
+                    # indices are file name minus one as file names start at 1, indices at 0!
+                    indices = [int(file.split('.')[0]) - 1 for file in listed_pickle_dir]
+
+                    # get a list of indices, that are not a file in result directory
+                    missing_indices = []
+                    for i in range(self.dhandler.nlcs):
+                        if i not in indices:
+                            missing_indices.append(i)
+
+                    # if this list is not empty, raise Error
+                    if len(missing_indices) > 0:
+                        raise ResultError(f'No result files for indices {missing_indices}')
+
+                    self.sub_collect_results(indices, listed_pickle_dir)
                     collected_data_filename = f'{self.pickle_dir}.pkl'
                     self.dhandler.collected_data = collected_data_filename
                     self.save_data()
@@ -85,7 +101,7 @@ class ResultHandler:
         else:
             logger.debug('results were already collected')
 
-    def sub_collect_results(self):
+    def sub_collect_results(self, indices, listed_pickle_dir):
         """
         implemented in subclasses
         """
@@ -94,27 +110,12 @@ class ResultHandler:
 
 class SNCosmoResultHandler(ResultHandler):
 
-    def sub_collect_results(self):
+    def sub_collect_results(self, indices, listed_pickle_dir):
 
         logger.info('collecting fit results')
 
-        listed_pickle_dir = os.listdir(self.pickle_dir)
-
-        # indices are file name minus one as file names start at 1, indices at 0!
-        indices = [int(file.split('.')[0])-1 for file in listed_pickle_dir]
-
-        # get a list of indices, that are not a file in result directory
-        # if this list is not empty, raise Error
-        missing_indices = []
-        for i in range(self.dhandler.nlcs):
-            if i not in indices:
-                missing_indices.append(i)
-
-        if len(missing_indices) > 0:
-            raise ResultError(f'No result files for indices {missing_indices}')
-
         data = [{}] * (max(indices) + 1)
-        for file in tqdm(listed_pickle_dir, desc='collecting fit results', file=tqdm_info, mininterval=30):
+        for file in tqdm(listed_pickle_dir, desc='collecting fit results', file=tqdm_info, mininterval=5):
 
             if file.startswith('.'):
                 continue
@@ -139,7 +140,7 @@ class SNCosmoResultHandler(ResultHandler):
             # os.remove(full_file_path)
 
         self.collected_data = data
-        self.combine_best_fits()
+        self.combine_best_fits(start=True)
 
     def combine_all_model_fits(self):
         """
@@ -164,7 +165,7 @@ class SNCosmoResultHandler(ResultHandler):
 
         self.dhandler.save_me()
 
-    def combine_best_fits(self):
+    def combine_best_fits(self, start):
         """
         calculates
         """
@@ -181,16 +182,24 @@ class SNCosmoResultHandler(ResultHandler):
                 if 'simsurvey' in self.dhandler.name \
                 else [True] * len(fit_output)
 
+            if start:
+                if np.all(nugent_mask):
+                    logger.debug('Nugent models included in analysis')
+                else:
+                    logger.debug('Nugent models not included in analysis')
+            start=False
+
             chi2 = fit_output['red_chi2']
-            mask = chi2 <= (min(chi2[nugent_mask]) * (3))
+            mask = np.array(chi2 <= (min(chi2[nugent_mask]) * 1.5)) & np.array(nugent_mask)
 
             res['t_exp_fit'] = np.median(fit_output['t_exp_fit'][mask])
-            res['mask'] = np.array(mask) & np.array(nugent_mask)
+            res['mask'] = mask
 
-            cl = 0.9
-            error_quantile = np.quantile(fit_output['t0_e'][mask], [0.5-cl/2, 0.5+cl/2])
-            stat_error = error_quantile[1] - error_quantile[0]
-            res['t_exp_dif_error'] = max(max(fit_output['t0_e'][mask]), stat_error)
+            # cl = 1
+            # error_quantile = np.quantile(fit_output['t_exp_fit'][mask], [0.5-cl/2, 0.5+cl/2])
+            # stat_error = error_quantile[1] - error_quantile[0]
+            # res['t_exp_dif_error'] = max(max(fit_output['t0_e'][mask]), stat_error)
+            res['t_exp_dif_error'] = np.sqrt(np.median(np.array(fit_output['t0_e']) ** 2))
 
             res['t_exp_dif'] = res['t_exp_fit'] - res['t_exp_true']
 
@@ -199,20 +208,22 @@ class SNCosmoResultHandler(ResultHandler):
 
 class MosfitResultHandler(ResultHandler):
 
-    def sub_collect_results(self, cl=0.9):
+    def sub_collect_results(self, indices, listed_pickle_dir):
 
         logger.info('collecting fit results')
 
-        data = []
+        data = [{}] * (max(indices) + 1)
         with open(self.dhandler._sncosmo_data_, 'rb') as f:
             sim = pickle.load(f, encoding='latin1')
 
         t_exp_true = sim['meta']['t0']
 
-        for file in tqdm(os.listdir(self.pickle_dir), desc='collecting fit results', file=tqdm_info, mininterval=30):
+        for file in tqdm(os.listdir(self.pickle_dir), desc='collecting fit results', file=tqdm_info, mininterval=5):
 
             if file.startswith('.'):
                 continue
+
+            ind = int(file.split('.')[0]) - 1
 
             full_file_path = f'{self.pickle_dir}/{file}'
 
@@ -233,14 +244,15 @@ class MosfitResultHandler(ResultHandler):
                 rspars = rs['parameters']
                 posterior_t_exp.append(rspars['texplosion']['value'] + rspars['reference_texplosion']['value'])
 
-            data += [{
+            data[ind] = {
                 't_exp_posterior': posterior_t_exp,
                 't_exp_fit': np.median(posterior_t_exp),
                 't_exp_true': t_exp_true[indice],
                 't_exp_dif': np.median(posterior_t_exp) - t_exp_true[indice],
                 't_exp_dif_error': np.std(posterior_t_exp),
-                't_exp_dif_ic': np.quantile(posterior_t_exp, [0.5-cl/2, 0.5+cl/2])
-            }]
+                't_exp_dif_0.9': np.quantile(posterior_t_exp, [0.05, 0.95]),
+                't_exp_dif_0.5': np.quantile(posterior_t_exp, [0.25, 0.75])
+            }
 
         self.collected_data = data
 
