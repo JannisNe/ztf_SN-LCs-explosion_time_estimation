@@ -6,11 +6,12 @@ import sncosmo
 import pickle
 import json
 import seaborn as sns
+import corner
 from collections import OrderedDict
 from scipy.stats import kde
 from scipy.optimize import curve_fit
 from estimate_explosion_time.shared import plots_dir, get_custom_logger, main_logger_name, magnitude_system, \
-    flux_zp, pickle_dir, bandcolors
+    flux_zp, pickle_dir, bandcolors, get_mag_limit
 
 
 logger = get_custom_logger(__name__)
@@ -25,14 +26,15 @@ class Plotter:
     def __init__(self, dhandler, method):
         self.dhandler = dhandler
         self.use_indices = None
+        self.dir = f'{self.get_my_root_dir()}/{method}/{self.dhandler.selection_string}'
+        self.lc_dir = self.dir + '/lcs'
+        self.corner_dir = self.dir + '/corners'
+        self.rhandler = self.dhandler.rhandlers[method]
 
         self.update_dir(self.get_my_root_dir())
         self.update_dir(f'{self.get_my_root_dir()}/{method}')
-        self.update_dir(f'{self.get_my_root_dir()}/{method}/{self.dhandler.selection_string}')
-
-        self.dir = f'{self.get_my_root_dir()}/{method}/{self.dhandler.selection_string}'
-        self.lc_dir = self.dir + '/lcs'
-        self.rhandler = self.dhandler.rhandlers[method]
+        self.update_dir(self.dir)
+        self.update_dir(self.corner_dir)
 
     def hist_t_exp_dif(self, cl):
         """
@@ -127,14 +129,38 @@ class Plotter:
             logger.info(f'making directory {self.lc_dir}')
             os.mkdir(self.lc_dir)
 
+        fig, ax = plt.subplots()
+        plt.gca().invert_yaxis()
+
+
         if 'sncosmo' in self.rhandler.method:
-            self.plot_lc_with_sncosmo_fit(indice)
+            self.plot_lc_with_sncosmo_fit(indice, ax)
         elif 'mosfit' in self.rhandler.method:
-            self.plot_lc_with_mosfit_fit(indice)
+            self.plot_lc_with_mosfit_fit(indice, ax)
         else:
             raise PlotterError('Jesus, what\'s that method, you crazy dog?! You\'re a dog, man!')
 
-    def plot_lc_with_sncosmo_fit(self, indice):
+        if self.rhandler.collected_data:
+            collected_data = self.rhandler.collected_data[indice]
+
+            t_exp_true = collected_data['t_exp_true']
+            t_exp_fit = collected_data['t_exp_fit']
+            t_exp_fit_error = collected_data['t_exp_dif_error']
+
+            ax.axvline(t_exp_true, color='red', linestyle='--', label='true $t_{exp}$')
+            ax.axvline(t_exp_fit, color='red', label='fitted $t_{exp}$')
+            ax.fill_between(np.array([-t_exp_fit_error / 2, t_exp_fit_error / 2]) + t_exp_fit,
+                            y1=30, color='red', alpha=0.2)
+
+        ax.set_xlabel('Phase in MJD')
+        ax.set_ylabel('Apparent Magnitude')
+
+        plt.legend()
+        plt.tight_layout()
+        plt.savefig(f'{self.lc_dir}/{indice}.pdf')
+        plt.close()
+
+    def plot_lc_with_sncosmo_fit(self, indice, ax):
 
         logger.debug(f'plotting lightcurve number {indice}')
         data_path = self.dhandler._sncosmo_data_
@@ -147,9 +173,6 @@ class Plotter:
 
         collected_data = self.rhandler.collected_data[indice]
 
-        t_exp_true = collected_data['t_exp_true']
-        t_exp_fit = collected_data['t_exp_fit']
-        t_exp_fit_error = collected_data['t_exp_dif_error']
         fit_results = collected_data['fit_output']
         mask = collected_data["mask"]
 
@@ -157,16 +180,11 @@ class Plotter:
             raise PlotterError(f'original ID and ID of fitted event are different: \n '
                                f'{fit_results[0]["ID"]} and {id_orig}')
 
-        # logger.debug(f'{mask} {fit_results}')
-        # logger.debug(f'{fit_results[mask]}')
-
         models = []
         for fit_result in fit_results[mask]:
             model = sncosmo.Model(source=fit_result['model'])
             model.set(z=fit_result['z'], t0=fit_result['t0'], amplitude=fit_result['amplitude'])
             models.append(model)
-
-        fig, ax = plt.subplots()
 
         plot_times = np.linspace(
             min(lc['time'])-20,
@@ -174,52 +192,44 @@ class Plotter:
             round((max(lc['time']) - min(lc['time']) + 40))
         )
 
+        data = sncosmo.photdata.PhotometricData(lc)
+
+        zp = np.unique(lc['zp'])
+        zpsys = np.unique(lc['zpsys'])
+
+        if (len(zp) > 1) or (len(zpsys) > 1):
+            raise PlotterError('Different zeropoints and zeropoint systems!')
+
+        normed_flux = data.normalized_flux(zp=zp, zpsys=zpsys)
+        ylims = [20,20]
+
         for band in bands:
 
             logger.debug(f'plotting band {band}')
 
             band_mask = lc['band'] == band
-            band_flux = lc['flux'][band_mask]
+            band_flux = normed_flux[band_mask]
             band_color = bandcolors(band)
-
-            zp = Plotter.sn_mag_sys.zpbandflux(band)
-            magalt = [-2.5 * np.log10(f / zp) if f > 0 else flux_zp for f in band_flux]
-
-            logger.debug(f'\nflux: {band_flux} \nmags: {magalt} \nzeropoint: {zp}')
-            input('continue? ')
-
             band_mag = [Plotter.sn_mag_sys.band_flux_to_mag(flux, band)
                         if flux > 0
-                        else flux_zp
+                        else get_mag_limit(band)
                         for flux in band_flux]
 
+            ylims = [max([ylims[0], max(band_mag)]), min([ylims[1], min(band_mag)])]
+
             ax.plot(lc['time'][band_mask], band_mag, 'o', label=band, color=band_color)
+            # ax.plot(lc['time'][band_mask], band_flux, 'o', label=band, color=band_color)
 
             for model in models:
 
-                model_mag = model.bandmag(band, magnitude_system, plot_times)
+                model_mag = model.bandmag(band, zpsys, plot_times)
+                # model_flux = model.bandflux(band, plot_times)
                 ax.plot(plot_times, model_mag, color=band_color, alpha=1/len(models))
+                # ax.plot(plot_times, model_flux, color=band_color, alpha=1/len(models))
 
-        ax.axvline(t_exp_true, color='red', linestyle='--', label='true $t_{exp}$')
-        ax.axvline(t_exp_fit, color='red', label='fitted $t_{exp}$')
-        ax.fill_between(np.array([-t_exp_fit_error/2, t_exp_fit_error/2]) + t_exp_fit,
-                        y1=25, color='red', alpha=0.2)
+        ax.set_ylim([ylims[0]+2, ylims[1]-3])
 
-        ax.legend()
-        ax.set_xlabel('phase in MJD')
-        ax.set_ylabel(f'mag in {magnitude_system} system')
-
-        ax.set_ylim(top=25)
-
-        plt.gca().invert_yaxis()
-        plt.tight_layout()
-        plt.savefig(f'{self.lc_dir}/{indice}.pdf')
-        plt.close()
-
-        # sncosmo.plot_lc(lc, fname=f'{self.lc_dir}/{indice}.pdf', model=models,
-        #                 model_label=fit_results['model'][mask])
-
-    def plot_lc_with_mosfit_fit(self, indice):
+    def plot_lc_with_mosfit_fit(self, indice, ax, plot_corner=False):
 
         json_name = f'{pickle_dir}/{self.dhandler.name}/mosfit/{indice}.json'
 
@@ -232,6 +242,7 @@ class Plotter:
         model = data['models'][0]
         real_data = len([x for x in photo if 'band' in x and 'magnitude' in x and (
                 'realization' not in x or 'simulated' in x)]) > 0
+        ci_data = [x for x in photo if 'band' in x and 'confidence_level' in x]
         band_attr = ['band', 'instrument', 'telescope', 'system', 'bandset']
         band_list = list(set([tuple(x.get(y, '')
                                     for y in band_attr) for x in photo
@@ -240,25 +251,15 @@ class Plotter:
                                          for y in band_attr) for x in photo
                                    if 'band' in x and 'magnitude' in x and (
                                            'realization' not in x or 'simulated' in x)]))
-        xray_instrument_attr = ['instrument', 'telescope']
-        xray_instrument_list = list(set([tuple(x.get(y, '')
-                                               for y in xray_instrument_attr) for x in photo
-                                         if 'instrument' in x and 'countrate' in x]))
-        real_band_list = list(set([tuple(x.get(y, '')
-                                         for y in band_attr) for x in photo
-                                   if 'band' in x and 'magnitude' in x and (
-                                           'realization' not in x or 'simulated' in x)]))
-        real_xray_instrument_list = list(set([tuple(x.get(y, '')
-                                                    for y in xray_instrument_attr) for x in photo
-                                              if 'instrument' in x and 'countrate' in x and (
-                                                      'realization' not in x or 'simulated' in x)]))
 
-        fig = plt.figure(figsize=(12, 8))
-        plt.gca().invert_yaxis()
-        # plt.gca().set_xlim(56600,56675)
-        # plt.gca().set_ylim(bottom=25, top=19)
-        plt.gca().set_xlabel('MJD')
-        plt.gca().set_ylabel('Apparent Magnitude')
+        confidence_intervals = {}
+        for x in ci_data:
+            if x['band'] not in confidence_intervals.keys():
+                confidence_intervals[x['band']] = [[], [], []]
+            confidence_intervals[x['band']][0].append(float(x['time']))
+            confidence_intervals[x['band']][1].append(float(x['confidence_interval_upper']))
+            confidence_intervals[x['band']][2].append(float(x['confidence_interval_lower']))
+
         used_bands = []
         for full_band in band_list:
             (band, inst, tele, syst, bset) = full_band
@@ -269,8 +270,9 @@ class Plotter:
             realizations = [[] for x in range(len(model['realizations']))]
             for ph in photo:
                 rn = ph.get('realization', None)
+                ci = ph.get('confidence_interval', False)
                 si = ph.get('simulated', False)
-                if rn and not si:
+                if rn and not si and not ci:
                     if tuple(ph.get(y, '') for y in band_attr) == full_band:
                         realizations[int(rn) - 1].append((
                             float(ph['time']), float(ph['magnitude']), [
@@ -278,24 +280,36 @@ class Plotter:
                                 float(ph.get('e_upper_magnitude', ph.get('e_magnitude', 0.0)))],
                             ph.get('upperlimit')))
             numrz = np.sum([1 for x in realizations if len(x)])
+
+            if band in confidence_intervals.keys():
+                logger.debug('plotting confidence intervals')
+                ci = confidence_intervals[band]
+                label = '' if full_band in used_bands or full_band in real_band_list else nice_name
+                ax.fill_between(ci[0], ci[1], ci[2], color=bandcolors(band), edgecolor=None, alpha=0.3,
+                                 label=label)
+                if label:
+                    used_bands = list(set(used_bands + [full_band]))
+
             for rz in realizations:
                 if not len(rz):
                     continue
+                logger.debug('plotting individual realizations')
                 xs, ys, vs, us = zip(*rz)
                 label = '' if full_band in used_bands or full_band in real_band_list else nice_name
                 if max(vs) == 0.0:
-                    plt.plot(xs, ys, color=bandcolors(band),
+                    ax.plot(xs, ys, color=bandcolors(band),
                              label=label, linewidth=0.5, alpha=0.1)
                 else:
                     xs = np.array(xs)
                     ymi = np.array(ys) - np.array([np.inf if u else v[0] for v, u in zip(vs, us)])
                     yma = np.array(ys) + np.array([v[1] for v in vs])
-                    plt.fill_between(xs, ymi, yma, color=bandcolors(band), edgecolor=None,
+                    ax.fill_between(xs, ymi, yma, color=bandcolors(band), edgecolor=None,
                                      label=label, alpha=1.0 / numrz, linewidth=0.0)
-                    plt.plot(xs, ys, color=bandcolors(band),
+                    ax.plot(xs, ys, color=bandcolors(band),
                              label=label, alpha=0.1, linewidth=0.5)
                 if label:
                     used_bands = list(set(used_bands + [full_band]))
+
             if real_data:
                 for s in range(2):
                     if s == 0:
@@ -316,21 +330,44 @@ class Plotter:
                         continue
                     xs, ys, yls, yus = zip(*vec)
                     label = nice_name if full_band not in used_bands else ''
-                    plt.errorbar(xs, ys, yerr=(yus, yls), color=bandcolors(band), fmt=symb,
+                    ax.errorbar(xs, ys, yerr=(yus, yls), color=bandcolors(band), fmt=symb,
                                  label=label,
                                  markeredgecolor='black', markeredgewidth=1, capsize=1,
                                  elinewidth=1.5, capthick=2, zorder=10)
-                    plt.errorbar(xs, ys, yerr=(yus, yls), color='k', fmt=symb, capsize=2,
+                    ax.errorbar(xs, ys, yerr=(yus, yls), color='k', fmt=symb, capsize=2,
                                  elinewidth=2.5, capthick=3, zorder=5)
                     if label:
                         used_bands = list(set(used_bands + [full_band]))
 
-        plt.margins(0.02, 0.1)
-        plt.legend()
-        plt.tight_layout()
-        plt.savefig(f'{self.lc_dir}/{indice}.pdf')
-        plt.close()
+        if plot_corner:
+            cfig = self._plot_corners(model)
+            cfig.savefig(f'{self.corner_dir}/{indice}.pdf')
+            plt.close(cfig)
 
+    @staticmethod
+    def _plot_corners(model):
+        """produce corner plot of posterior parameter distribution of a mosfit result"""
+
+        logger.debug('producing corner plot')
+
+        corner_input = []
+        pars = [x for x in model['setup'] if model['setup'][x].get('kind') == 'parameter' and
+                'min_value' in model['setup'][x] and 'max_value' in model['setup'][x]]
+        weights = []
+        for realization in model['realizations']:
+            par_vals = realization['parameters']
+            if 'weight' in realization:
+                weights.append(float(realization['weight']))
+            var_names = ['$' + ('\\log\\, ' if par_vals[x].get('log') else '') +
+                         par_vals[x]['latex'] + '$' for x in par_vals if x in pars and 'fraction' in par_vals[x]]
+            corner_input.append([np.log10(par_vals[x]['value']) if
+                                 par_vals[x].get('log') else par_vals[x]['value'] for x in par_vals
+                                 if x in pars and 'fraction' in par_vals[x]])
+        weights = weights if len(weights) else None
+        ranges = [0.999 for x in range(len(corner_input[0]))]
+        cfig = corner.corner(corner_input, labels=var_names, quantiles=[0.16, 0.5, 0.84],
+                             show_titles=True, weights=weights, range=ranges)
+        return cfig
 
     def get_dir(self, method):
         return f'{self.get_my_root_dir()}/{method}/{self.dhandler.selection_string}/'
@@ -339,7 +376,7 @@ class Plotter:
     def update_dir(this_dir):
         if not os.path.isdir(this_dir):
             os.mkdir(this_dir)
-        logger.debug(f'directory for Plotter is {this_dir}')
+            logger.debug(f'making directory {this_dir}')
 
     def get_my_root_dir(self):
         return f'{plots_dir}/{self.dhandler.name}'
