@@ -24,6 +24,8 @@ class DataHandler:
 
         self.name = name
         self.orig_path = path
+        # self.zp = zp
+        # self.zpsys = zpsys
         self.data = None
         self.nlcs = None
         self.pickle_dir = None
@@ -75,8 +77,9 @@ class DataHandler:
                 copy2(path, dst)
 
             elif os.path.isdir(path):
-                logger.info(f'copying data from {path} to {self.dir}')
-                copytree(path, self.dir)
+                raise NotImplementedError
+                # logger.info(f'copying data from {path} to {self.dir}')
+                # copytree(path, self.dir)
 
             else:
                 raise DataImportError(
@@ -95,6 +98,11 @@ class DataHandler:
 
         self._sncosmo_data_ = f'{self.dir}/{self.name}.pkl'
         self._mosfit_data_ = f'{self.dir}/{self.name}_csv'
+
+        # test get_data
+        self.get_data('sncosmo')
+        self.get_data('mosfit')
+
         self.nlcs = len(os.listdir(self._mosfit_data_))
         logger.info(f'{self.nlcs} lightcurves found in data')
 
@@ -169,6 +177,7 @@ class DataHandler:
 
         elif 'mosfit' in method:
             if not os.path.isdir(self._mosfit_data_):
+                logger.info('converting pickled data to mosfit readable CSVs, please wait ...')
                 self.write_pkl_to_csv()
             logger.debug(f'using data stored in {self._mosfit_data_}')
             return self._mosfit_data_
@@ -245,16 +254,16 @@ class DataHandler:
             rhandler.get_t_exp_dif_distribution()
             plotter.hist_t_exp_dif(cl)
             plotter.plot_tdif_tdife()
-            plotter.plot_lcs_where_fit_fails(dt=2.5, n=10)
+            plotter.plot_lcs_where_fit_fails(dt=5, n=10)
         except KeyboardInterrupt:
             pass
 
         finally:
             self.save_me()
 
-    def select_and_adjust_selection_string(self, **kwargs):
+    def select_and_adjust_selection_string(self, select_all=False, **kwargs):
 
-        if len(kwargs.keys()) < 1:
+        if (len(kwargs.keys()) < 1) or select_all:
             self.selection_string = 'all'
             self.selected_indices = list(range(self.nlcs))
         else:
