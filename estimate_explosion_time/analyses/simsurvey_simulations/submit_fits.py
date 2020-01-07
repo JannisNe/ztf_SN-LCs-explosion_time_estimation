@@ -11,7 +11,7 @@ from estimate_explosion_time.core.fit_data.fitlauncher.fitlauncher import Fitter
 from estimate_explosion_time.cluster import n_tasks
 
 
-methods = ['sncosmo_chi2']
+methods = ['mosfit']
 simulation_name = 'simsurvey_simulation'
 
 simsurvey_path = f'{simulation_dir}/{simulation_name}'
@@ -42,4 +42,4 @@ for method in methods:
         f'job-id {fitter.job_id}'
     )
 
-    fitter.fit_lcs(simsurveyDH)
+    fitter.fit_lcs(simsurveyDH, tasks_in_group=4, ntasks=4)

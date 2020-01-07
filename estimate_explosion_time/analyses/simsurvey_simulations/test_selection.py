@@ -25,7 +25,5 @@ simsurveyDH.select_and_adjust_selection_string(
     check_band='any'
 )
 
-input('continue? ')
-
 for method in methods:
     simsurveyDH.results(method)

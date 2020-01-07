@@ -10,7 +10,7 @@ from estimate_explosion_time.core.data_prep.data import DataHandler
 from estimate_explosion_time.cluster import n_tasks
 
 
-methods = ['mosfit']
+methods = all_methods[:-1]
 simulation_name = 'simsurvey_simulation'
 
 simsurvey_path = f'{simulation_dir}/{simulation_name}'
@@ -31,6 +31,8 @@ for rhandler in simsurveyDH.rhandlers.values():
     )
 
 input('continue? ')
+
+simsurveyDH.select_and_adjust_selection_string()
 
 for method in methods:
 

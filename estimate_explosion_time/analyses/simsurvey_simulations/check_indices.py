@@ -10,7 +10,7 @@ from estimate_explosion_time.core.data_prep.data import DataHandler
 import pickle
 
 
-methods = ['sncosmo_mcmc']
+methods = all_methods[:-1]
 logger.debug(f'using methods{methods}')
 simulation_name = 'simsurvey_simulation'
 
@@ -34,7 +34,8 @@ for method in methods:
     rhandler = simsurveyDH.rhandlers[method]
 
     try:
-        rhandler.sub_collect_results()
+        rhandler.collected_data = None
+        rhandler.collect_results()
         rhandler.get_t_exp_dif_distribution()
 
     finally:
