@@ -120,9 +120,9 @@ all_methods = ['sncosmo_chi2', 'sncosmo_mcmc', 'sncosmo_nester', 'mosfit']
 # ============================================ #
 # = set magnitude system and flux zero point = #
 # ============================================ #
-
-magnitude_system = 'ab'
-flux_zp = 25
+#
+# magnitude_system = 'ab'
+# flux_zp = 15
 
 
 # ======================================= #
@@ -132,7 +132,7 @@ flux_zp = 25
 def bandcolors(band):
 
     color_dict = {
-        'ztfg': 'red',
+        'ztfg': 'orange',
         'ztfr': 'blue',
         'ztfi': 'green',
         'desi': 'green'
@@ -146,3 +146,22 @@ def bandcolors(band):
                 return color_dict[key]
 
     raise Exception(f'No color specified for band {band}, type(band)={type(band)}!')
+
+
+# ======================= #
+# = limiting magnitudes = #
+# ======================= #
+#
+# def get_mag_limit(band):
+#
+#     mag_dict = {
+#         'ztfg': 21,
+#         'ztfr': 21,
+#         'ztfi': 21,
+#         'desi': 21
+#     }
+#
+#     if band in mag_dict.keys():
+#         return mag_dict[band]
+#     else:
+#         return Exception(f'No limiting magnitude specified for band {band}')
