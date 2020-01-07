@@ -5,6 +5,7 @@ from estimate_explosion_time.shared import \
     root_dir, es_scratch_dir, activate_path, environment_path, mosfit_environment_path, \
     get_custom_logger, main_logger_name
 from estimate_explosion_time.core.fit_data.sncosmo import get_sncosmo_fit_path
+from estimate_explosion_time.core.fit_data.mosfit import get_mosfit_fit_path
 
 
 logger = get_custom_logger(__name__)
@@ -37,17 +38,20 @@ def make_desy_submit_file(method_name, indir, outdir, ntasks, cache,
 
     elif 'mosfit' in method_name:
 
+        reduce_file_script = get_mosfit_fit_path() + '/reduce_mosfit_result_file.py'
+
         path_to_environment = mosfit_environment_path
 
         iterations = 500
-        extrapolate = [20, 0]
         walkers = 100
 
         fill = '    OUTNAME=products/${c}.json \n' \
                '    echo "doing mosfit fit" \n' \
                '    printf \'n\\n%d\\nn\\nn\\nn\' $c | ' \
-               'mosfit -e ${INDIR}/${c}.csv -m default --prefer-fluxes --quiet ' \
-               f'-i {iterations} -E {extrapolate[0]} {extrapolate[1]} -N {walkers}'
+               'mosfit -e ${INDIR}/${c}.csv -m default --quiet -D nester -R ' \
+              f'-N {walkers} \n' \
+              f'    python {reduce_file_script} $OUTNAME'
+
 
     else:
         raise ValueError(f'Input {method_name} for method_name not understood!')
@@ -122,5 +126,5 @@ def make_desy_submit_file(method_name, indir, outdir, ntasks, cache,
     return desy_submit_file
 
 
-if __name__ == '__main__':
-    make_desy_submit_file('mosfit', 'test_indir', 'test_outdir')
+# if __name__ == '__main__':
+#     make_desy_submit_file('mosfit', 'test_indir', 'test_outdir')
