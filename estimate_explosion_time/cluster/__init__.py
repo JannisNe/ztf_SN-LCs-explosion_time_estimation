@@ -29,10 +29,6 @@ def submit_to_desy(method_name, simulation_name=None, **kwargs):
             os.remove(log_dir + '/' + file)
 
     submit_file = make_desy_submit_file(method_name, **kwargs)
-
-    # TODO: remove this
-    input('continue? ')
-
     submit_cmd = 'qsub -o {0} '.format(log_dir)
 
     if simulation_name:
@@ -84,7 +80,7 @@ def wait_for_cluster(job_id):
                 logger.info(f'{time.asctime(time.localtime())} - Job-ID {job_id}: '
                             f'{n_total} entries in queue. '
                             f'Of these, {n_running} are running tasks, and there are '
-                            f'{waiting_str} jobs still waiting to be executed.')
+                            f'{waiting_str} jobs waiting to be executed.')
                 i = 0
                 j += 1
 
