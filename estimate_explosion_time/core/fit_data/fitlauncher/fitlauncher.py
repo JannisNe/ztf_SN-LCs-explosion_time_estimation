@@ -87,8 +87,6 @@ class Fitter:
 
         logger.info('submitting jobs to DESY cluster')
 
-        # TODO: set ntasks to dhandler.nlcs
-
         if 'mosfit' in self.method_name:
             tasks_in_group = 1
         else:
@@ -105,7 +103,7 @@ class Fitter:
             'simulation_name': dhandler.name
         }
 
-        # if any of the keyword arguments are explicitly given, uyse these
+        # if any of the keyword arguments are explicitly given, use these
         kwargs_to_pass = {key: kwargs[key] if key in kwargs.keys() else default_kwargs[key]
                           for key in default_kwargs.keys()}
 
