@@ -74,17 +74,17 @@ class ResultHandler:
                     listed_pickle_dir = os.listdir(self.pickle_dir)
 
                     # indices are file name minus one as file names start at 1, indices at 0!
-                    indices = [int(file.split('.')[0]) - 1 for file in listed_pickle_dir]
+                    indices = [int(file.split('.')[0]) for file in listed_pickle_dir]
 
                     # get a list of indices, that are not a file in result directory
                     missing_indices = []
-                    for i in range(self.dhandler.nlcs):
+                    for i in range(1, self.dhandler.nlcs+1):
                         if i not in indices:
                             missing_indices.append(i)
 
                     # if this list is not empty, raise Error
                     if len(missing_indices) > 0:
-                        raise ResultError(f'No result files for indices {missing_indices}')
+                        raise ResultError(f'No result files for {len(missing_indices)} fits!')
 
                     self.sub_collect_results(indices, listed_pickle_dir)
                     collected_data_filename = f'{self.pickle_dir}.pkl'
