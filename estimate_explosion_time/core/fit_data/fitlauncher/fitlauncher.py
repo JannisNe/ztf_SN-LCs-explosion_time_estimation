@@ -66,7 +66,7 @@ class Fitter:
         # quiere cluster to see if there are still tasks from previuos fit running
         if dh_job_id and (n_tasks(dh_job_id) > 0):
             N = n_tasks(dh_job_id, print_full=True)
-            logger.info(f'Still {N} tasks from previous fit in queue! Continuing this fit')
+            logger.info(f'Still {N} tasks from previous fit in queue! Continuing this fit. Please come back later.')
             return
 
         outdir_name = f'{pickle_dir}/{dhandler.name}'
@@ -77,20 +77,21 @@ class Fitter:
             if not os.path.exists(this_dir):
                 logger.debug(f'Making Fitter output directory {this_dir}')
 
-        # If outdir does contain stuff, clear it. That deletes old fit results, that stay after
-        # collect_results in the case of Mosfit
-        for file in tqdm(os.listdir(outdir), desc='clearing fitter output directory', file=tqdm_info, mininterval=5):
-            os.remove(f'{outdir}/{file}')
+        if not 'missing_indice_file' in kwargs.keys():
+            # If outdir does contain stuff, clear it. That deletes old fit results, that stay after
+            # collect_results in the case of Mosfit
+            for file in tqdm(os.listdir(outdir), desc='clearing fitter output directory', file=tqdm_info, mininterval=5):
+                os.remove(f'{outdir}/{file}')
 
         self.cache_dir = f'{self.get_cache_root()}/{dhandler.name}'
         self.update_cache_dir()
 
         logger.info('submitting jobs to DESY cluster')
 
-        if 'mosfit' in self.method_name:
-            tasks_in_group = 1
-        else:
-            tasks_in_group = 50
+        # if 'mosfit' in self.method_name:
+        #     tasks_in_group = 1
+        # else:
+        #     tasks_in_group = 50
 
         # default keyword arguments for submit_to_desy
         default_kwargs = {
@@ -99,8 +100,9 @@ class Fitter:
             'outdir': outdir,
             'cache': self.cache_dir,
             'ntasks': dhandler.nlcs,
-            'tasks_in_group': tasks_in_group,
-            'simulation_name': dhandler.name
+            'tasks_in_group': 1 if 'mosfit' in self.method_name else 50,
+            'simulation_name': dhandler.name,
+            'missing_indice_file': None
         }
 
         # if any of the keyword arguments are explicitly given, use these

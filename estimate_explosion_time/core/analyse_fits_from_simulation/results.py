@@ -5,7 +5,7 @@ import logging
 import pickle
 import json
 from tqdm import tqdm
-from estimate_explosion_time.shared import get_custom_logger, main_logger_name, TqdmToLogger
+from estimate_explosion_time.shared import get_custom_logger, main_logger_name, TqdmToLogger, pickle_dir
 from estimate_explosion_time.cluster import wait_for_cluster
 from estimate_explosion_time.core.fit_data.fitlauncher.fitlauncher import Fitter
 
@@ -58,7 +58,7 @@ class ResultHandler:
             if self.job_id:
                 job_status = wait_for_cluster(self.job_id)
             else:
-                inp = input('No job id specified. Go on trying to collect fit results? ')
+                inp = input('No job id specified. Go on trying to collect fit results? [y/n] ')
                 if inp in ['y', 'yes']:
                     job_status = True
                 else:
@@ -74,7 +74,7 @@ class ResultHandler:
                     listed_pickle_dir = os.listdir(self.pickle_dir)
 
                     # indices are file name minus one as file names start at 1, indices at 0!
-                    indices = [int(file.split('.')[0]) for file in listed_pickle_dir]
+                    indices = [int(file.split('.')[0]) for file in listed_pickle_dir if not 'missing' in file]
 
                     # get a list of indices, that are not a file in result directory
                     missing_indices = []
@@ -82,9 +82,30 @@ class ResultHandler:
                         if i not in indices:
                             missing_indices.append(i)
 
-                    # if this list is not empty, raise Error
+                    # if this list is not empty, try and fit the missing lightcurves
                     if len(missing_indices) > 0:
-                        raise ResultError(f'No result files for {len(missing_indices)} fits!')
+
+                        missing_indices_fname = f'{pickle_dir}/{self.dhandler.name}/{self.method}/missing_indices.txt'
+                        with open(missing_indices_fname, 'w') as f:
+                            for ind in missing_indices:
+                                f.write(f"{ind}\n")
+                        logger.info(f'No result files for {len(missing_indices)} fits! '
+                                          f'Wrote list to {missing_indices_fname}')
+                        inpt = input('Submit remaining lcs to fit? [y/n] ')
+
+                        # if desired fit the remaining lightcurves, then exit
+                        if inpt == 'y':
+                            fitter = Fitter.get_fitter(self.method)
+                            fitter.fit_lcs(
+                                self.dhandler,
+                                ntasks=len(missing_indices),
+                                tasks_in_group=1,
+                                missing_indice_file=missing_indices_fname
+                            )
+                            logger.info('submitted fits, exiting ...')
+                            return
+
+                        raise ResultError("Missing result files!")
 
                     self.sub_collect_results(indices, listed_pickle_dir)
                     collected_data_filename = f'{self.pickle_dir}.pkl'

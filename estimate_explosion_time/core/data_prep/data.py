@@ -212,7 +212,7 @@ class DataHandler:
                                f'Result Handler {rhandler.method} '
                                f'still waiting on results from method {method}!')
 
-                inpt = input('continue and overwrite? ')
+                inpt = input('continue and overwrite? [y/n] ')
 
                 if inpt in ['y', 'yes']:
                     pass

@@ -23,10 +23,11 @@ def submit_to_desy(method_name, simulation_name=None, **kwargs):
     name = f'{method_name}_{simulation_name}'
 
     # remove old logs
-    logger.debug('removing old log files')
-    for file in tqdm(os.listdir(log_dir), desc='removing old log files', file=tqdm_deb, mininterval=30):
-        if name in file:
-            os.remove(log_dir + '/' + file)
+    if not 'missing_indice_file' in kwargs.keys():
+        logger.debug('removing old log files')
+        for file in tqdm(os.listdir(log_dir), desc='removing old log files', file=tqdm_deb, mininterval=30):
+            if name in file:
+                os.remove(log_dir + '/' + file)
 
     submit_file = make_desy_submit_file(method_name, **kwargs)
     submit_cmd = 'qsub -o {0} '.format(log_dir)

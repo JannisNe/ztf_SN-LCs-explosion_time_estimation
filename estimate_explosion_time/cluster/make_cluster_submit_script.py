@@ -15,7 +15,7 @@ desy_submit_file = f'{multiprocess_dir}/submitDESY.sh'
 
 
 def make_desy_submit_file(method_name, indir, outdir, ntasks, cache,
-                          hrss='8G', hcpu='23:59:00', tasks_in_group=100):
+                          hrss='8G', hcpu='23:59:00', tasks_in_group=100, missing_indice_file=None):
 
     njobs = int(math.ceil( ntasks / tasks_in_group))
 
@@ -26,9 +26,9 @@ def make_desy_submit_file(method_name, indir, outdir, ntasks, cache,
 
         hrss = '1G'
 
-        fill = "    OUTNAME=${c}.pkl \n" \
+        fill = "    OUTNAME=${lcid}.pkl \n" \
                "    echo 'doing sncosmo fit' \n" \
-              f"    python {script} $c $INDIR $OUTNAME"
+              f"    python {script} $lcid $INDIR $OUTNAME"
 
         if 'mcmc' in method_name:
             fill += f' --method mcmc'
@@ -45,10 +45,10 @@ def make_desy_submit_file(method_name, indir, outdir, ntasks, cache,
         iterations = 500
         walkers = 100
 
-        fill = '    OUTNAME=products/${c}.json \n' \
+        fill = '    OUTNAME=products/${lcid}.json \n' \
                '    echo "doing mosfit fit" \n' \
-               '    printf \'n\\n%d\\nn\\nn\\nn\' $c | ' \
-               'mosfit -e ${INDIR}/${c}.csv -m default --quiet -D nester -R ' \
+               '    printf \'n\\n%d\\nn\\nn\\nn\' $lcid | ' \
+               'mosfit -e ${INDIR}/${lcid}.csv -m default --quiet -D nester -R ' \
               f'-N {walkers} \n' \
               f'    python {reduce_file_script} $OUTNAME'
 
@@ -98,8 +98,12 @@ def make_desy_submit_file(method_name, indir, outdir, ntasks, cache,
            "    then \n" \
            "        echo 'exceeded n_tasks at ' $c \n" \
            "        break \n" \
-           "    fi \n" \
-           "    TMPDIR=" + cache + "/tmp${c} \n" \
+           "    fi \n"
+
+    txt1+= "    lcid=$c \n" if not missing_indice_file \
+      else "    lcid=\"$(sed \"${c}q;d\" " + missing_indice_file + ")\" \n"
+
+    txt1+= "    TMPDIR=" + cache + "/tmp${lcid} \n" \
            "    mkdir $TMPDIR \n" \
            "    cd $TMPDIR \n"
 

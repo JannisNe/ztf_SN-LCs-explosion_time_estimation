@@ -10,8 +10,8 @@ import corner
 from collections import OrderedDict
 from scipy.stats import kde
 from scipy.optimize import curve_fit
-from estimate_explosion_time.shared import plots_dir, get_custom_logger, main_logger_name, magnitude_system, \
-    flux_zp, pickle_dir, bandcolors, get_mag_limit
+from estimate_explosion_time.shared import plots_dir, get_custom_logger, main_logger_name, \
+    pickle_dir, bandcolors
 
 
 logger = get_custom_logger(__name__)
@@ -20,8 +20,6 @@ logging.getLogger('matplotlib').setLevel('INFO')
 
 
 class Plotter:
-
-    sn_mag_sys = sncosmo.get_magsystem(magnitude_system)
 
     def __init__(self, dhandler, method):
         self.dhandler = dhandler
@@ -132,7 +130,6 @@ class Plotter:
         fig, ax = plt.subplots()
         plt.gca().invert_yaxis()
 
-
         if 'sncosmo' in self.rhandler.method:
             self.plot_lc_with_sncosmo_fit(indice, ax)
         elif 'mosfit' in self.rhandler.method:
@@ -151,6 +148,9 @@ class Plotter:
             ax.axvline(t_exp_fit, color='red', label='fitted $t_{exp}$')
             ax.fill_between(np.array([-t_exp_fit_error / 2, t_exp_fit_error / 2]) + t_exp_fit,
                             y1=30, color='red', alpha=0.2)
+
+        else:
+            logger.info('Data from fits has not been collected! Can\'t draw explosion time estimate ...')
 
         ax.set_xlabel('Phase in MJD')
         ax.set_ylabel('Apparent Magnitude')
@@ -192,33 +192,70 @@ class Plotter:
             round((max(lc['time']) - min(lc['time']) + 40))
         )
 
-        data = sncosmo.photdata.PhotometricData(lc)
-
         zp = np.unique(lc['zp'])
         zpsys = np.unique(lc['zpsys'])
 
         if (len(zp) > 1) or (len(zpsys) > 1):
             raise PlotterError('Different zeropoints and zeropoint systems!')
+        else:
+            zp = 15 # zp[0]
+            zpsys = zpsys[0]
+            sn_mag_sys = sncosmo.get_magsystem(zpsys)
 
-        normed_flux = data.normalized_flux(zp=zp, zpsys=zpsys)
+        logger.debug(f'zp: {zp}, zpsys: {zpsys}')
+        data = sncosmo.photdata.PhotometricData(lc)
+        normed_data = data.normalized(zp=zp, zpsys=zpsys)
         ylims = [20,20]
 
         for band in bands:
 
             logger.debug(f'plotting band {band}')
-
-            band_mask = lc['band'] == band
-            band_flux = normed_flux[band_mask]
             band_color = bandcolors(band)
-            band_mag = [Plotter.sn_mag_sys.band_flux_to_mag(flux, band)
-                        if flux > 0
-                        else get_mag_limit(band)
-                        for flux in band_flux]
+            band_mag = {'mag': list(), 'mag_err_u': list(), 'mag_err_l': list(), 'time': list()}
+            band_mag_ul = {'mag': list(), 'mag_err_u': list(), 'mag_err_l': list(), 'time': list()}
 
-            ylims = [max([ylims[0], max(band_mag)]), min([ylims[1], min(band_mag)])]
+            for flux, fluxerr, time, bandpass in zip(normed_data.flux,
+                                                     normed_data.fluxerr,
+                                                     normed_data.time,
+                                                     normed_data.band):
 
-            ax.plot(lc['time'][band_mask], band_mag, 'o', label=band, color=band_color)
+                if bandpass.name != band:
+                    continue
+
+                print(flux, fluxerr, time)
+
+                if (flux > 0) and (flux/fluxerr >= 5):
+                    band_mag['mag'].append(sn_mag_sys.band_flux_to_mag(flux, bandpass))
+                    band_mag['mag_err_u'].append(
+                        sn_mag_sys.band_flux_to_mag(flux + fluxerr, bandpass) - band_mag['mag'][-1]
+                    )
+                    band_mag['mag_err_l'].append(
+                        sn_mag_sys.band_flux_to_mag(flux - fluxerr, bandpass) - band_mag['mag'][-1]
+                    )
+                    band_mag['time'].append(time)
+
+                else:
+                    band_mag_ul['mag'].append(
+                        sn_mag_sys.band_flux_to_mag(
+                            max([flux+fluxerr, fluxerr]),
+                            bandpass)
+                    )
+                    band_mag_ul['mag_err_u'].append(0)
+                    band_mag_ul['mag_err_l'].append(-1)
+                    band_mag_ul['time'].append(time)
+
+            ylims = [max([ylims[0], max(band_mag['mag'])]), min([ylims[1], min(band_mag_ul['mag'])])]
+
+            # ax.plot(lc['time'][band_mask], band_mag, 'o', label=band, color=band_color)
             # ax.plot(lc['time'][band_mask], band_flux, 'o', label=band, color=band_color)
+            i = 0
+            for symb, dic in zip(['o', 'v'], [band_mag, band_mag_ul]):
+                if len(dic['mag']) > 0:
+                    ax.errorbar(dic['time'], dic['mag'], yerr=(dic['mag_err_u'], dic['mag_err_l']), color=band_color,
+                                fmt=symb, label=[band, ''][i], markeredgecolor='black', markeredgewidth=1, capsize=1,
+                                elinewidth=1.5, capthick=2, zorder=10
+                                )
+                    i += 1
 
             for model in models:
 
@@ -229,7 +266,7 @@ class Plotter:
 
         ax.set_ylim([ylims[0]+2, ylims[1]-3])
 
-    def plot_lc_with_mosfit_fit(self, indice, ax, plot_corner=False):
+    def plot_lc_with_mosfit_fit(self, indice, ax, ylim=[20, 20], plot_corner=False,):
 
         json_name = f'{pickle_dir}/{self.dhandler.name}/mosfit/{indice}.json'
 
@@ -329,6 +366,7 @@ class Plotter:
                     if not len(vec):
                         continue
                     xs, ys, yls, yus = zip(*vec)
+                    ylim = [max([ylim[0], max(ys)+1]), min([ylim[1], min(ys)-1])]
                     label = nice_name if full_band not in used_bands else ''
                     ax.errorbar(xs, ys, yerr=(yus, yls), color=bandcolors(band), fmt=symb,
                                  label=label,
@@ -338,6 +376,8 @@ class Plotter:
                                  elinewidth=2.5, capthick=3, zorder=5)
                     if label:
                         used_bands = list(set(used_bands + [full_band]))
+
+        ax.set_ylim(ylim)
 
         if plot_corner:
             cfig = self._plot_corners(model)
