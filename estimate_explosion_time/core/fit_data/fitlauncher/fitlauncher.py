@@ -80,8 +80,12 @@ class Fitter:
         if not 'missing_indice_file' in kwargs.keys():
             # If outdir does contain stuff, clear it. That deletes old fit results, that stay after
             # collect_results in the case of Mosfit
-            for file in tqdm(os.listdir(outdir), desc='clearing fitter output directory', file=tqdm_info, mininterval=5):
-                os.remove(f'{outdir}/{file}')
+            inpt = input('I\'m about to delete old result files. should I continue? [y/n] ')
+            if inpt in ['y', 'yes']:
+                for file in tqdm(os.listdir(outdir), desc='clearing fitter output directory', file=tqdm_info, mininterval=5):
+                    os.remove(f'{outdir}/{file}')
+            else:
+                raise FitterError('process terminated')
 
         self.cache_dir = f'{self.get_cache_root()}/{dhandler.name}'
         self.update_cache_dir()

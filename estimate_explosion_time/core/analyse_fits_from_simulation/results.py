@@ -4,6 +4,7 @@ from astropy.table import Table, vstack
 import logging
 import pickle
 import json
+import sys
 from tqdm import tqdm
 from estimate_explosion_time.shared import get_custom_logger, main_logger_name, TqdmToLogger, pickle_dir
 from estimate_explosion_time.cluster import wait_for_cluster
@@ -103,7 +104,7 @@ class ResultHandler:
                                 missing_indice_file=missing_indices_fname
                             )
                             logger.info('submitted fits, exiting ...')
-                            return
+                            sys.exit(0)
 
                         raise ResultError("Missing result files!")
 
