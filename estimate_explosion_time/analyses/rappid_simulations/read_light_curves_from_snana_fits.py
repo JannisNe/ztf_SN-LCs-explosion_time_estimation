@@ -142,6 +142,7 @@ def read_light_curves_from_snana_fits_files( head_files, phot_files, passbands=(
         header_data = header_HDU[1].data
         for i, head in enumerate(tqdm_notebook(header_data, leave=False, desc='header data')):
             model_num = head['SIM_TYPE_INDEX']
+            template_num = head['SIM_TEMPLATE_INDEX']
             snid = head['SNID']
             # objid = 'field_{}_base_{}'.format(model_num, snid)
             ptrobs_min = head['PTROBS_MIN']
@@ -165,7 +166,8 @@ def read_light_curves_from_snana_fits_files( head_files, phot_files, passbands=(
 
             light_curves_list.append(lc)
             header_data_list.append([model_num, snid, peakmag_g, peakmag_r,
-                                     redshift, dlmu, peakmjd, mwebv, mwebv_err, ra, dec, photoz, photozerr])
+                                     redshift, dlmu, peakmjd, mwebv, mwebv_err,
+                                     ra, dec, photoz, photozerr, template_num])
 
     return light_curves_list, header_data_list
 
