@@ -103,7 +103,8 @@ def make_desy_submit_file(method_name, indir, outdir, ntasks, cache,
     txt1+= "    lcid=$c \n" if not missing_indice_file \
       else "    lcid=\"$(sed \"${c}q;d\" " + missing_indice_file + ")\" \n"
 
-    txt1+= "    TMPDIR=" + cache + "/tmp${lcid} \n" \
+    txt1+= "    echo 'fitting lightcurve ' $lcid \n" \
+           "    TMPDIR=" + cache + "/tmp${lcid} \n" \
            "    mkdir $TMPDIR \n" \
            "    cd $TMPDIR \n"
 
