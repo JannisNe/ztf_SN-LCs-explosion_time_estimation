@@ -41,14 +41,10 @@ class Plotter:
         """
         logger.debug('plotting histogramm of delta t_exp')
 
-        # logger.debug(f'rhandler data = {self.rhandler.t_exp_dif[:10]} ...')
-        # logger.debug(f'indices = {self.dhandler.selected_indices}')
-
         tdif = np.array(self.rhandler.t_exp_dif)[self.dhandler.selected_indices]
+        tdif = tdif[~np.isnan(tdif)]
         tdif_e = np.array(self.rhandler.t_exp_dif_error)[self.dhandler.selected_indices]
-
-        # logger.debug(f't_dif = {tdif[:10]} ...')
-        # logger.debug(f't_dif error = {tdif_e[:10]} ...')
+        tdif_e = tdif_e[~np.isnan(tdif_e)]
 
         ic = [0, 0]
         ic[0], tmean, ic[1] = np.quantile(tdif, [0.5-cl/2, 0.5, 0.5+cl/2])
@@ -64,6 +60,11 @@ class Plotter:
         ax[1].legend()
 
         ax[0].hist(tdif, bins=50)
+
+        if self.dhandler.selected_indices:
+            ax[0].plot([], [], ' ', label='{:.2f}% of all LCs'.format(
+                len(self.dhandler.selected_indices)*100/self.dhandler.nlcs))
+
         ax[0].axvline(tmean, c='orange', label=f'median = {round(tmean,2)}')
         ax[0].axvline(ic[0], linestyle='--', c='orange', label=f'IC$_{ {cl} }$ = {round(ic[0],2), round(ic[1],2)}')
         ax[0].axvline(ic[1], linestyle='--', c='orange')
@@ -87,7 +88,9 @@ class Plotter:
         yref = xref
 
         x = np.log(abs(np.array(self.rhandler.t_exp_dif)[self.dhandler.selected_indices]))
+        x = x[~np.isnan(x)]
         y = np.log(np.array(self.rhandler.t_exp_dif_error)[self.dhandler.selected_indices])
+        y = y[~np.isnan(y)]
         nbins = 200
 
         def fitfct(xdat, a, b): return a * xdat + b
@@ -114,12 +117,13 @@ class Plotter:
         plt.savefig(f'{self.dir}/difference_error_relation.pdf')
         plt.close()
 
-    def plot_lcs_where_fit_fails(self, dt, n):
+    def plot_lcs_where_fit_fails(self, dt=5, n=10):
 
         dt_indices = np.where(abs(self.rhandler.t_exp_dif[self.dhandler.selected_indices]) >= dt)[0]
 
         for indice in dt_indices[:n]:
-            self.plot_lc(indice)
+            logger.info(f'plotting lightcurve with indice {indice}')
+            self.plot_lc(indice+1)  # TODO: INDICES!
 
     def plot_lc(self, indice):
 
@@ -130,10 +134,11 @@ class Plotter:
         fig, ax = plt.subplots()
         plt.gca().invert_yaxis()
 
+        # TODO: check indices!!!
         if 'sncosmo' in self.rhandler.method:
-            self.plot_lc_with_sncosmo_fit(indice, ax)
+            self.plot_lc_with_sncosmo_fit(indice+1, ax)
         elif 'mosfit' in self.rhandler.method:
-            self.plot_lc_with_mosfit_fit(indice, ax)
+            self.plot_lc_with_mosfit_fit(indice+1, ax)
         else:
             raise PlotterError('Jesus, what\'s that method, you crazy dog?! You\'re a dog, man!')
 

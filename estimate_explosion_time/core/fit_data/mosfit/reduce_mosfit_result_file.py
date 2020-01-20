@@ -104,20 +104,3 @@ data['photometry'] = real_data + new_data_from_fits
 
 with open(args.file, 'w') as f:
     json.dump(data, f, indent=4, sort_keys=True)
-
-# best_param_file = 'best_parameters.json'
-# with open(best_param_file, 'w') as f:
-#     json.dump(model['best_realization']['parameters'], f, indent=4, sort_keys=True)
-#
-# # generate photometry from best fitting realization
-# mjds = [float(rz['time']) - float(tref) for rz in real_data]
-#
-# cmd = f'mosfit -m default --extra-times'
-# for mjd in mjds:
-#     cmd += ' ' +str(mjd)
-# cmd += f' --max-time {max(mjds)}'
-# cmd += f' -N 1 --quiet --extra-bands r g --extra-instruments ZTF --parameter-paths {best_param_file} '
-#
-# print('comand is ' + cmd)
-#
-# os.system(cmd)

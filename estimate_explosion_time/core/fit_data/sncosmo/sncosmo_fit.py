@@ -132,7 +132,7 @@ for ind, model_name in enumerate(model_names):
 
         t_exp_fitted = get_explosion_time(model_name) * \
                        (1 +
-                        res.parameters[np.array(model.param_names) == 'z'] ) \
+                        res.parameters[np.array(model.param_names) == 'z']) \
                        + res.parameters[np.array(model.param_names) == 't0']
         outarr['t_exp_fit'][ind] = t_exp_fitted
         outarr['t_exp_dif'][ind] = t0_true - t_exp_fitted

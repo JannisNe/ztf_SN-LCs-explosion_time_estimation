@@ -237,13 +237,13 @@ class DataHandler:
         with open(self.save_path, 'wb') as fout:
             pickle.dump(self, fout)
 
-    def results(self, method=None, cl=0.9):
+    def results(self, method=None, cl=0.9, **kwargs):
 
-        logger.info(f'getting results for {self.name} analyzed by {method}')
         if not method:
             method = self.latest_method
-        rhandler = self.rhandlers[method]
+        logger.info(f'getting results for {self.name} analyzed by {method}')
 
+        rhandler = self.rhandlers[method]
         plotter = Plotter(self, method)
 
         if not self.selected_indices:
@@ -254,7 +254,7 @@ class DataHandler:
             rhandler.get_t_exp_dif_distribution()
             plotter.hist_t_exp_dif(cl)
             plotter.plot_tdif_tdife()
-            plotter.plot_lcs_where_fit_fails(dt=5, n=10)
+            plotter.plot_lcs_where_fit_fails(**kwargs)
         except KeyboardInterrupt:
             pass
 
@@ -270,7 +270,10 @@ class DataHandler:
             self.selection_string = ''
             for kw_item in kwargs.items():
                 if kw_item[1] is not None:
-                    self.selection_string += f'{kw_item[0]}{kw_item[1]}_'
+                    if kw_item[0] == 'req_texp_dif':
+                        self.selection_string += f'tdif{kw_item[1][0]}{kw_item[1][1]}'
+                    else:
+                        self.selection_string += f'{kw_item[0]}{kw_item[1]}_'
 
             logger.debug(f'selection string is {self.selection_string}')
 
@@ -281,6 +284,7 @@ class DataHandler:
                req_postpeak=None,
                req_max_timedif=None,
                req_std=None,
+               req_texp_dif=None,
                check_band='any'):
         """
         Selects lightcurves based on the number of detections before and after the peak,
@@ -394,6 +398,21 @@ class DataHandler:
                 raise TypeError(f'Input {check_band} for check_band not understood!')
 
         self.selected_indices = indices
+
+        # select based on the error on the explosion time fit
+        if req_texp_dif:
+
+            if not len(req_texp_dif) == 2:
+                raise ValueError('req_texp_dif has to be [method, value]!')
+            error = self.rhandlers[req_texp_dif[0]].t_exp_dif_error
+            val = req_texp_dif[1]
+
+            indices = []
+            for indice in self.selected_indices:
+                if error[indice] <= val:
+                    indices.append(indice)
+
+            self.selected_indices = indices
 
         selected_percentage = len(indices)/len(data['lcs'])
         logger.debug('selected {0:.2f}% of all lightcurves'.format(selected_percentage*100))

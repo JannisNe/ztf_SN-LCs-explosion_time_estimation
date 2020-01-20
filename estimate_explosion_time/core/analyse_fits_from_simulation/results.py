@@ -49,8 +49,12 @@ class ResultHandler:
 
         logger.info('getting distribution of the difference between true and fitted explosion time')
 
-        self.t_exp_dif = np.array([data['t_exp_dif'] for data in self.collected_data])
-        self.t_exp_dif_error = np.array([data['t_exp_dif_error'] for data in self.collected_data])
+        self.t_exp_dif = np.array([data['t_exp_dif']
+                                   if data is not None else np.nan
+                                   for data in self.collected_data])
+        self.t_exp_dif_error = np.array([data['t_exp_dif_error']
+                                         if data is not None else np.nan
+                                         for data in self.collected_data])
 
     def collect_results(self):
 
@@ -75,7 +79,9 @@ class ResultHandler:
                     listed_pickle_dir = os.listdir(self.pickle_dir)
 
                     # indices are file name minus one as file names start at 1, indices at 0!
-                    indices = [int(file.split('.')[0]) for file in listed_pickle_dir if not 'missing' in file]
+                    indices = [int(file.split('.')[0]) for file in listed_pickle_dir if
+                               not 'missing' in file and
+                               not file.startswith('.')]
 
                     # get a list of indices, that are not a file in result directory
                     missing_indices = []
@@ -104,9 +110,10 @@ class ResultHandler:
                                 missing_indice_file=missing_indices_fname
                             )
                             logger.info('submitted fits, exiting ...')
-                            sys.exit(0)
 
-                        raise ResultError("Missing result files!")
+                        inpt = input('continue without the missing results? [y/n] ')
+                        if not inpt in ['y', 'yes']:
+                            sys.exit(0)
 
                     self.sub_collect_results(indices, listed_pickle_dir)
                     collected_data_filename = f'{self.pickle_dir}.pkl'
@@ -136,7 +143,7 @@ class SNCosmoResultHandler(ResultHandler):
 
         logger.info('collecting fit results')
 
-        data = [{}] * (max(indices) + 1)
+        data = [None] * (max(indices) + 1)
         for file in tqdm(listed_pickle_dir, desc='collecting fit results', file=tqdm_info, mininterval=5):
 
             if file.startswith('.'):
@@ -234,22 +241,21 @@ class MosfitResultHandler(ResultHandler):
 
         logger.info('collecting fit results')
 
-        data = [{}] * (max(indices) + 1)
+        data = [None] * (max(indices) + 1)
         with open(self.dhandler._sncosmo_data_, 'rb') as f:
             sim = pickle.load(f, encoding='latin1')
 
-        t_exp_true = sim['meta']['t0']
+        t_exp_true = sim['meta']['t0']  # TODO: get texp_true!!!
+        logger.warning('USING T0 AND NOT TEXP!!!')
 
         for file in tqdm(os.listdir(self.pickle_dir), desc='collecting fit results', file=tqdm_info, mininterval=5):
 
-            if file.startswith('.'):
+            if file.startswith('.') or 'missing' in file:
                 continue
 
             ind = int(file.split('.')[0]) - 1
 
             full_file_path = f'{self.pickle_dir}/{file}'
-
-            # logger.debug(f'opening {full_file_path}')
 
             with open(full_file_path, 'r') as f:
                 dat = json.loads(f.read())
@@ -258,22 +264,36 @@ class MosfitResultHandler(ResultHandler):
                 dat = dat[list(dat.keys())[0]]
 
             name = dat['name']
-            indice = int(name) # TODO: change this to int(name)-1 for future imports
+            indice = int(name)  # TODO: change this to int(name)-1 for future imports
             model = dat['models'][0]
 
-            posterior_t_exp = []
-            for rs in model['realizations']:
-                rspars = rs['parameters']
-                posterior_t_exp.append(rspars['texplosion']['value'] + rspars['reference_texplosion']['value'])
+            # posterior_t_exp = []
+            # for rs in model['realizations']:
+            #     rspars = rs['parameters']
+            #     posterior_t_exp.append(rspars['texplosion']['value'] + rspars['reference_texplosion']['value'])
+            #
+            # data[ind] = {
+            #     't_exp_posterior': posterior_t_exp,
+            #     't_exp_fit': np.median(posterior_t_exp),
+            #     't_exp_true': t_exp_true[indice],
+            #     't_exp_dif': np.median(posterior_t_exp) - t_exp_true[indice],
+            #     't_exp_dif_error': np.std(posterior_t_exp),
+            #     't_exp_dif_0.9': np.quantile(posterior_t_exp, [0.05, 0.95]),
+            #     't_exp_dif_0.5': np.quantile(posterior_t_exp, [0.25, 0.75])
+            # }
+
+            posterior_t_exp = model['realizations'][0]['parameters']
+            texp_fit = float(posterior_t_exp['reference_texplosion']) + float(posterior_t_exp['texplosion']['median'])
 
             data[ind] = {
                 't_exp_posterior': posterior_t_exp,
-                't_exp_fit': np.median(posterior_t_exp),
+                't_exp_fit': texp_fit,
                 't_exp_true': t_exp_true[indice],
-                't_exp_dif': np.median(posterior_t_exp) - t_exp_true[indice],
-                't_exp_dif_error': np.std(posterior_t_exp),
-                't_exp_dif_0.9': np.quantile(posterior_t_exp, [0.05, 0.95]),
-                't_exp_dif_0.5': np.quantile(posterior_t_exp, [0.25, 0.75])
+                't_exp_dif': texp_fit - t_exp_true[indice],
+                't_exp_dif_error': float(posterior_t_exp['texplosion']['gaussian_error']),
+                't_exp_dif_0.9': np.array([float(posterior_t_exp['texplosion']['confidence_interval_lower']),
+                                           float(posterior_t_exp['texplosion']['confidence_interval_upper'])]) +
+                                 float(posterior_t_exp['reference_texplosion'])
             }
 
         self.collected_data = data
