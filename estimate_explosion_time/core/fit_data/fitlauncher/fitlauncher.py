@@ -67,22 +67,19 @@ class Fitter:
         if dh_job_id and (n_tasks(dh_job_id) > 0):
             N = n_tasks(dh_job_id, print_full=True)
             logger.info(f'Still {N} tasks from previous fit in queue! Continuing this fit. Please come back later.')
-            return
+            raise FitterError('process terminated')
 
-        outdir_name = f'{pickle_dir}/{dhandler.name}'
-        outdir = f'{outdir_name}/{self.method_name}'
+        outdir = self.get_output_directory(dhandler)
 
-        # If directory doesn't exist, make one.
-        for this_dir in [outdir_name, outdir]:
-            if not os.path.exists(this_dir):
-                logger.debug(f'Making Fitter output directory {this_dir}')
-
-        if not 'missing_indice_file' in kwargs.keys():
+        if not 'missing_indice_file' in kwargs.keys() and len(os.listdir(outdir)) > 0:
             # If outdir does contain stuff, clear it. That deletes old fit results, that stay after
             # collect_results in the case of Mosfit
             inpt = input('I\'m about to delete old result files. should I continue? [y/n] ')
             if inpt in ['y', 'yes']:
-                for file in tqdm(os.listdir(outdir), desc='clearing fitter output directory', file=tqdm_info, mininterval=5):
+                for file in tqdm(os.listdir(outdir),
+                                 desc='clearing fitter output directory',
+                                 file=tqdm_info,
+                                 mininterval=5):
                     os.remove(f'{outdir}/{file}')
             else:
                 raise FitterError('process terminated')
@@ -154,6 +151,18 @@ class Fitter:
         this_cache_dir = f'{cache_dir}/{self.method_name}'
         return this_cache_dir
 
+    def get_output_directory(self, dhandler):
+
+        outdir_name = f'{pickle_dir}/{dhandler.name}'
+        outdir = f'{outdir_name}/{self.method_name}'
+
+        # If directory doesn't exist, make one.
+        for this_dir in [outdir_name, outdir]:
+            if not os.path.exists(this_dir):
+                logger.debug(f'Making Fitter output directory {this_dir}')
+                os.mkdir(this_dir)
+
+        return outdir
 
 class FitterError(Exception):
     def __init__(self, msg):
