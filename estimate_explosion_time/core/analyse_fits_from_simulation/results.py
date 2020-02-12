@@ -47,7 +47,7 @@ class ResultHandler:
         if 't_exp_dif' not in self.collected_data[0].keys():
             raise ResultError('fitted explosion time is missing!')
 
-        logger.info('getting distribution of the difference between true and fitted explosion time')
+        logger.debug('getting distribution of the difference between true and fitted explosion time')
 
         self.t_exp_dif = np.array([data['t_exp_dif']
                                    if data is not None else np.nan
@@ -56,9 +56,12 @@ class ResultHandler:
                                          if data is not None else np.nan
                                          for data in self.collected_data])
 
-    def collect_results(self):
+    def collect_results(self, force=False):
 
-        if not self.collected_data:
+        if force:
+            logger.debug('forcing to collect data')
+
+        if not self.collected_data or force:
 
             if self.job_id:
                 job_status = wait_for_cluster(self.job_id)
@@ -85,7 +88,7 @@ class ResultHandler:
 
                     # get a list of indices, that are not a file in result directory
                     missing_indices = []
-                    for i in range(1, self.dhandler.nlcs+1):
+                    for i in range(self.dhandler.nlcs):
                         if i not in indices:
                             missing_indices.append(i)
 
@@ -253,7 +256,7 @@ class MosfitResultHandler(ResultHandler):
             if file.startswith('.') or 'missing' in file:
                 continue
 
-            ind = int(file.split('.')[0]) - 1
+            ind = int(file.split('.')[0])
 
             full_file_path = f'{self.pickle_dir}/{file}'
 
