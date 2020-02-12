@@ -87,8 +87,8 @@ def make_desy_submit_file(method_name, indir, outdir, ntasks, cache,
            "\n" \
            "echo 'PYTHONPATH is ' $PYTHONPATH \n" \
            "\n" \
-           "itr1=$(expr $ID \* $tasks_in_group - $tasks_in_group + 1) \n" \
-           "itr2=$(expr $ID \* $tasks_in_group) \n" \
+           "itr1=$(expr $ID \* $tasks_in_group - $tasks_in_group) \n" \
+           "itr2=$(expr $ID \* $tasks_in_group - 1) \n" \
            "echo 'iterating from ' $itr1 ' to ' $itr2 \n" \
            "\n" \
            "for (( c=$itr1; c<=$itr2; c++ )) \n" \
