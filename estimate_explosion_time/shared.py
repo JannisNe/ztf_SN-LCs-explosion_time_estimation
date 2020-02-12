@@ -36,7 +36,8 @@ class TqdmToLogger(io.StringIO):
 
 main_logger_name = 'main script'
 handler = logging.StreamHandler()
-format = logging.Formatter('%(name)s:\n %(levelname)s - %(message)s')
+# format = logging.Formatter('%(name)s:\n %(levelname)s - %(message)s')
+format = logging.Formatter('%(levelname)s - %(name)s: %(message)s')
 handler.setFormatter(format)
 
 
