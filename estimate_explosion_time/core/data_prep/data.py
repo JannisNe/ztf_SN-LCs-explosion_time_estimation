@@ -139,7 +139,7 @@ class DataHandler:
 
             lc = Table(lcs[ind])
             lc['band'][lc['band'] == 'desi'] = 'ztfi'
-            fname = f'{self._mosfit_data_}/{ind + 1}.csv'
+            fname = f'{self._mosfit_data_}/{ind}.csv'
 
             for col in add_columns:
 
@@ -237,7 +237,7 @@ class DataHandler:
         with open(self.save_path, 'wb') as fout:
             pickle.dump(self, fout)
 
-    def results(self, method=None, cl=0.9, **kwargs):
+    def results(self, method=None, cl=0.9, force=False, **kwargs):
 
         if not method:
             method = self.latest_method
@@ -250,7 +250,7 @@ class DataHandler:
             raise ResultError('No selection has been made!')
 
         try:
-            rhandler.collect_results()
+            rhandler.collect_results(force=force)
             rhandler.get_t_exp_dif_distribution()
             plotter.hist_t_exp_dif(cl)
             plotter.plot_tdif_tdife()
@@ -272,7 +272,7 @@ class DataHandler:
                 if kw_item[1] is not None:
                     if kw_item[0] == 'req_texp_dif':
                         self.selection_string += f'tdif{kw_item[1][0]}{kw_item[1][1]}'
-                    else:
+                    elif 'print' not in kw_item[0]:
                         self.selection_string += f'{kw_item[0]}{kw_item[1]}_'
 
             logger.debug(f'selection string is {self.selection_string}')
@@ -285,7 +285,9 @@ class DataHandler:
                req_max_timedif=None,
                req_std=None,
                req_texp_dif=None,
-               check_band='any'):
+               check_band='any',
+               sigma=4,
+               print_selected_indices=False):
         """
         Selects lightcurves based on the number of detections before and after the peak,
         a maximum time difference between detections and a measure for the spread of the data points.
@@ -299,6 +301,8 @@ class DataHandler:
         :return: list of IDs that comply with the requests
                  list of IDs that don't comply
         """
+
+        give = [945, 946, 948, 949]
 
         with open(self._sncosmo_data_, 'rb') as f:
             data = pickle.load(f, encoding='latin1')
@@ -323,6 +327,11 @@ class DataHandler:
 
         for j, (lc, ID) in enumerate(zip(data['lcs'], data['meta']['idx_orig'])):
 
+            logger.debug('checking indice ' + str(j))
+
+            noise_mask = lc['flux']/lc['fluxerr'] > sigma
+            lc = lc[noise_mask]
+
             bands = np.unique([lc['band']])
             band_masks = {}
 
@@ -336,12 +345,18 @@ class DataHandler:
 
             for i, band in enumerate(bands):
 
+                logger.debug('checking band ' + band)
+
                 lc_masked = lc[band_masks[band]]
+                if len(lc_masked) == 0:
+                    continue
+
                 nepochs = len(lc_masked)
                 peak_phase = lc_masked['time'][np.argmax(lc_masked['flux'])]
 
                 # check for compliance with required pre peak epochs
                 npre_peak = len(lc_masked[lc_masked['time'] < peak_phase])
+                if j in give: logger.debug('LC {0}: {1} N_prepeak: {2}'.format(j, band, npre_peak))
                 if req_prepeak is not None and type(req_prepeak) == dict and band in req_prepeak.keys():
                     comply_prepeak[band] = npre_peak >= req_prepeak[band]
                 elif req_prepeak is not None and type(req_prepeak) == int:
@@ -380,12 +395,18 @@ class DataHandler:
                 else:
                     comply_std[band] = True
 
+            crit_str = np.array(['prepeak', 'postpeak', 'max timedif', 'std'])
+
             if check_band == 'any':
                 if np.any(list(comply_prepeak.values())) & np.any(list(comply_postpeak.values())) & \
                         np.any(list(comply_max_timedif.values())) & np.any(list(comply_std.values())):
                     IDs.append(ID)
                     indices.append(j)
                 else:
+                    fail_str = str(crit_str[np.invert([
+                        np.any(list(comply_prepeak.values())), np.any(list(comply_postpeak.values())),
+                        np.any(list(comply_max_timedif.values())), np.any(list(comply_std.values()))])])
+                    logger.debug('failed because ' + fail_str)
                     cut_IDs.append(ID)
             elif check_band == 'all':
                 if np.all(list(comply_prepeak.values())) & np.all(list(comply_postpeak.values())) & \
@@ -393,6 +414,10 @@ class DataHandler:
                     IDs.append(ID)
                     indices.append(j)
                 else:
+                    fail_str = str(crit_str[np.invert([
+                        np.all(list(comply_prepeak.values())), np.all(list(comply_postpeak.values())),
+                        np.all(list(comply_max_timedif.values())), np.all(list(comply_std.values()))])])
+                    logger.debug('failed because ' + fail_str)
                     cut_IDs.append(ID)
             else:
                 raise TypeError(f'Input {check_band} for check_band not understood!')
@@ -402,6 +427,8 @@ class DataHandler:
         # select based on the error on the explosion time fit
         if req_texp_dif:
 
+            logger.debug('checking for required difference in texplosion estimation')
+
             if not len(req_texp_dif) == 2:
                 raise ValueError('req_texp_dif has to be [method, value]!')
             error = self.rhandlers[req_texp_dif[0]].t_exp_dif_error
@@ -409,13 +436,19 @@ class DataHandler:
 
             indices = []
             for indice in self.selected_indices:
+                logger.debug('checking indice ' +str(indice))
                 if error[indice] <= val:
                     indices.append(indice)
+                else:
+                    logger.debug('failed')
 
             self.selected_indices = indices
 
         selected_percentage = len(indices)/len(data['lcs'])
         logger.debug('selected {0:.2f}% of all lightcurves'.format(selected_percentage*100))
+
+        if print_selected_indices:
+            logger.info('selected indices: \n' + str(self.selected_indices))
 
     @staticmethod
     def dh_dict_path(name, method):
@@ -426,9 +459,12 @@ class DataHandler:
         if os.path.isfile(DataHandler.dh_path(name)):
             logger.info(f'DataHandler for {name} already exists, loading it ...')
             return DataHandler.load_dh(name)
-        else:
+        elif path:
             logger.info(f'creating DataHandler for {name}')
             return DataHandler(path, name, simulation)
+        else:
+            raise DataImportError(f'ResultHandler for {name} doesn\'t exist. '
+                                  f'Please sepcify path to the data!')
 
     @staticmethod
     def load_dh(name):
