@@ -1,3 +1,4 @@
+import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
 import os
@@ -7,12 +8,14 @@ import pickle
 import json
 import seaborn as sns
 import corner
+import warnings
 from collections import OrderedDict
 from scipy.stats import kde
 from scipy.optimize import curve_fit
 from estimate_explosion_time.shared import plots_dir, get_custom_logger, main_logger_name, \
     pickle_dir, bandcolors
 
+warnings.simplefilter('ignore', matplotlib.MatplotlibDeprecationWarning)
 
 logger = get_custom_logger(__name__)
 logger.setLevel(logging.getLogger(main_logger_name).getEffectiveLevel())
@@ -33,6 +36,7 @@ class Plotter:
         self.update_dir(f'{self.get_my_root_dir()}/{method}')
         self.update_dir(self.dir)
         self.update_dir(self.corner_dir)
+        self.update_dir(self.lc_dir)
 
     def hist_t_exp_dif(self, cl):
         """
@@ -119,26 +123,32 @@ class Plotter:
 
     def plot_lcs_where_fit_fails(self, dt=5, n=10):
 
-        dt_indices = np.where(abs(self.rhandler.t_exp_dif[self.dhandler.selected_indices]) >= dt)[0]
+        # dt_indices = np.where(abs(self.rhandler.t_exp_dif[self.dhandler.selected_indices]) >= dt)[0]
+        dt_indices = np.array(self.dhandler.selected_indices)[
+            abs(self.rhandler.t_exp_dif[self.dhandler.selected_indices]) >= dt
+        ]
 
         for indice in dt_indices[:n]:
-            logger.info(f'plotting lightcurve with indice {indice}')
-            self.plot_lc(indice+1)  # TODO: INDICES!
+            logger.debug(f'plotting lightcurve with indice {indice}')
+            self.plot_lc(indice, f'{self.lc_dir}/bad_lcs')  # TODO: INDICES!
 
-    def plot_lc(self, indice):
+    def plot_lc(self, indice, plot_in_dir='default'):
 
-        if not os.path.isdir(self.lc_dir):
-            logger.info(f'making directory {self.lc_dir}')
-            os.mkdir(self.lc_dir)
+        if plot_in_dir == 'default':
+            plot_in_dir = self.lc_dir
+
+        if not os.path.isdir(plot_in_dir):
+            logger.info(f'making directory {plot_in_dir}')
+            os.mkdir(plot_in_dir)
 
         fig, ax = plt.subplots()
         plt.gca().invert_yaxis()
 
         # TODO: check indices!!!
         if 'sncosmo' in self.rhandler.method:
-            self.plot_lc_with_sncosmo_fit(indice+1, ax)
+            self.plot_lc_with_sncosmo_fit(indice, ax)
         elif 'mosfit' in self.rhandler.method:
-            self.plot_lc_with_mosfit_fit(indice+1, ax)
+            self.plot_lc_with_mosfit_fit(indice, ax)
         else:
             raise PlotterError('Jesus, what\'s that method, you crazy dog?! You\'re a dog, man!')
 
@@ -148,7 +158,9 @@ class Plotter:
             t_exp_true = collected_data['t_exp_true']
             t_exp_fit = collected_data['t_exp_fit']
             t_exp_fit_error = collected_data['t_exp_dif_error']
+            tdif = t_exp_fit - t_exp_true
 
+            ax.plot([], [], ' ', label=r'$t_{dif} = $' + '{:.1f}'.format(tdif))
             ax.axvline(t_exp_true, color='red', linestyle='--', label='true $t_{exp}$')
             ax.axvline(t_exp_fit, color='red', label='fitted $t_{exp}$')
             ax.fill_between(np.array([-t_exp_fit_error / 2, t_exp_fit_error / 2]) + t_exp_fit,
@@ -162,11 +174,12 @@ class Plotter:
 
         plt.legend()
         plt.tight_layout()
-        plt.savefig(f'{self.lc_dir}/{indice}.pdf')
+        plt.savefig(f'{plot_in_dir}/{indice}.pdf')
         plt.close()
 
     def plot_lc_with_sncosmo_fit(self, indice, ax):
 
+        logger.warning('THIS PART OF THE CODE IS NOT MAINTAINED!!')
         logger.debug(f'plotting lightcurve number {indice}')
         data_path = self.dhandler._sncosmo_data_
         with open(data_path, 'rb') as fin:
