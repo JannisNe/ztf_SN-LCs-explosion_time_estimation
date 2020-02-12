@@ -5,12 +5,17 @@ logger = get_custom_logger(main_logger_name)
 logger.setLevel(logging.DEBUG)
 logger.debug('logging level is DEBUG')
 
+import argparse
 from estimate_explosion_time.shared import simulation_dir
 from estimate_explosion_time.core.data_prep.data import DataHandler
 from estimate_explosion_time.cluster import n_tasks
 
 
-methods = all_methods[:-1]
+parser = argparse.ArgumentParser()
+parser.add_argument('-f', '--force', type=bool)
+args=parser.parse_args()
+
+methods = ['mosfit']
 simulation_name = 'simsurvey_simulation'
 
 simsurvey_path = f'{simulation_dir}/{simulation_name}'
@@ -36,4 +41,4 @@ simsurveyDH.select_and_adjust_selection_string()
 
 for method in methods:
 
-    simsurveyDH.results(method)
+    simsurveyDH.results(method, force=args.force)

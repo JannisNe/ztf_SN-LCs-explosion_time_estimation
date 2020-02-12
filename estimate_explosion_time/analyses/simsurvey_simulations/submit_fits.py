@@ -1,4 +1,4 @@
-from estimate_explosion_time.shared import get_custom_logger, main_logger_name, all_methods
+from estimate_explosion_time.shared import get_custom_logger, main_logger_name, all_methods, pickle_dir
 import logging
 
 logger = get_custom_logger(main_logger_name)
@@ -42,4 +42,5 @@ for method in methods:
         f'job-id {fitter.job_id}'
     )
 
-    fitter.fit_lcs(simsurveyDH, tasks_in_group=4, ntasks=4)
+    missing_indice_file = f'{pickle_dir}/{simsurveyDH.name}/{fitter.method_name}/missing_indices.txt'
+    fitter.fit_lcs(simsurveyDH, tasks_in_group=4, missing_indice_file=missing_indice_file)

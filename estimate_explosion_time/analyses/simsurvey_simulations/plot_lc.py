@@ -11,12 +11,14 @@ import logging
 import argparse
 
 parser = argparse.ArgumentParser()
-parser.add_argument('ind', type=int)
-parser.add_argument('method', type=str)
+parser.add_argument('ind', type=int, nargs='+')
+parser.add_argument('method', type=str, default='mosfit', nargs='+')
 args = parser.parse_args()
 
 logger = get_custom_logger(main_logger_name)
 logger.setLevel(logging.DEBUG)
 dh = DataHandler.get_dhandler('simsurvey_simulation')
-plotter = Plotter(dh, args.method)
-plotter.plot_lc(args.ind)
+for method in args.method:
+    plotter = Plotter(dh, method)
+    for ind in args.ind:
+        plotter.plot_lc(ind)
