@@ -26,11 +26,11 @@ def write_model_to_pickle(model_number):
                 'hostebv': [],
                 'model': [],
                 'model_type':[],
-                'texp': []},
+                't_peak': []},
            'lcs': []}
     for head, lc in tqdm.tqdm(list(zip(heads, lcs)), desc='format lightcurves', leave=False):
-        sim['meta']['t0'].append(head[6])
-        sim['meta']['texp'].append(None)
+        sim['meta']['t0'].append(None)
+        sim['meta']['t_peak'].append([6])
         sim['meta']['z'].append(head[4])
         sim['meta']['idx_orig'].append(int(head[1]))
         sim['meta']['dlum'].append(head[5])
