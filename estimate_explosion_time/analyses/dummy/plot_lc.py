@@ -11,12 +11,18 @@ import logging
 import argparse
 
 parser = argparse.ArgumentParser()
-parser.add_argument('ind', type=int)
+parser.add_argument('ind', type=int, nargs='+')
 parser.add_argument('method', type=str)
 args = parser.parse_args()
 
+
+
 logger = get_custom_logger(main_logger_name)
 logger.setLevel(logging.DEBUG)
-dh = DataHandler.get_dhandler('simsurvey_simulation')
+dh = DataHandler.get_dhandler('dummy')
+
+
+
 plotter = Plotter(dh, args.method)
-plotter.plot_lc(args.ind)
+for ind in args.ind:
+    plotter.plot_lc(ind)
