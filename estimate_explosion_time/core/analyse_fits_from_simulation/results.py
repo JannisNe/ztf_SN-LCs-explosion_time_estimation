@@ -13,8 +13,6 @@ from estimate_explosion_time.core.fit_data.fitlauncher.fitlauncher import Fitter
 
 logger = get_custom_logger(__name__)
 logger.setLevel(logging.getLogger(main_logger_name).getEffectiveLevel())
-tqdm_deb = TqdmToLogger(logger, level=logging.DEBUG)
-tqdm_info = TqdmToLogger(logger, level=logging.INFO)
 
 
 class ResultHandler:
@@ -147,7 +145,8 @@ class SNCosmoResultHandler(ResultHandler):
         logger.info('collecting fit results')
 
         data = [None] * (max(indices) + 1)
-        for file in tqdm(listed_pickle_dir, desc='collecting fit results', file=tqdm_info, mininterval=5):
+        for file in listed_pickle_dir if logger.getEffectiveLevel() > logging.DEBUG else \
+                tqdm(listed_pickle_dir, desc='collecting fit results'):
 
             if file.startswith('.'):
                 continue
@@ -251,7 +250,8 @@ class MosfitResultHandler(ResultHandler):
         t_exp_true = sim['meta']['t0']  # TODO: get texp_true!!!
         logger.warning('USING T0 AND NOT TEXP!!!')
 
-        for file in tqdm(os.listdir(self.pickle_dir), desc='collecting fit results', file=tqdm_info, mininterval=5):
+        itr = os.listdir(self.pickle_dir)
+        for file in itr if logger.getEffectiveLevel() > logging.DEBUG else tqdm(itr, desc='collecting fit results'):
 
             if file.startswith('.') or 'missing' in file:
                 continue
