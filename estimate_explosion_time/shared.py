@@ -118,14 +118,6 @@ mosfit_environment_path = '/afs/ifh.de/user/n/neckerja/scratch/envs/mosfit_env'
 all_methods = ['sncosmo_chi2', 'sncosmo_mcmc', 'sncosmo_nester', 'mosfit']
 
 
-# ============================================ #
-# = set magnitude system and flux zero point = #
-# ============================================ #
-#
-# magnitude_system = 'ab'
-# flux_zp = 15
-
-
 # ======================================= #
 # = set colors for the wavelength bands = #
 # ======================================= #
@@ -139,30 +131,14 @@ def bandcolors(band):
         'desi': 'green'
     }
 
-    if band in color_dict.keys():
-        return color_dict[band]
+    if not band:
+        return 'grey'
     else:
-        for key in color_dict.keys():
-            if band in key:
-                return color_dict[key]
+        if band in color_dict.keys():
+            return color_dict[band]
+        else:
+            for key in color_dict.keys():
+                if band in key:
+                    return color_dict[key]
 
     raise Exception(f'No color specified for band {band}, type(band)={type(band)}!')
-
-
-# ======================= #
-# = limiting magnitudes = #
-# ======================= #
-#
-# def get_mag_limit(band):
-#
-#     mag_dict = {
-#         'ztfg': 21,
-#         'ztfr': 21,
-#         'ztfi': 21,
-#         'desi': 21
-#     }
-#
-#     if band in mag_dict.keys():
-#         return mag_dict[band]
-#     else:
-#         return Exception(f'No limiting magnitude specified for band {band}')
