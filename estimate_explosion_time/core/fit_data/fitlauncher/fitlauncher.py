@@ -10,8 +10,6 @@ import pickle
 
 logger = get_custom_logger(__name__)
 logger.setLevel(logging.getLogger(main_logger_name).getEffectiveLevel())
-tqdm_info = TqdmToLogger(logger, level=logging.DEBUG)
-tqdm_deb = TqdmToLogger(logger, level=logging.INFO)
 
 
 fitter_file = f'{fh_dir}/fitter_dict.pkl'
@@ -76,10 +74,10 @@ class Fitter:
             # collect_results in the case of Mosfit
             inpt = input('I\'m about to delete old result files. should I continue? [y/n] ')
             if inpt in ['y', 'yes']:
-                for file in tqdm(os.listdir(outdir),
-                                 desc='clearing fitter output directory',
-                                 file=tqdm_info,
-                                 mininterval=5):
+
+                itr = os.listdir(outdir)
+                for file in itr if logger.getEffectiveLevel() > logging.INFO else \
+                        tqdm(itr, desc='clearing fitter output directory'):
                     os.remove(f'{outdir}/{file}')
             else:
                 raise FitterError('process terminated')
@@ -133,10 +131,9 @@ class Fitter:
             if self.cache_dir != self.get_cache_root():
                 logger.debug('cache directory already exists')
 
-                for obj in tqdm(os.listdir(self.cache_dir + '/'),
-                                desc='clearing cache directory',
-                                file=tqdm_info,
-                                mininterval=30):
+                itr = os.listdir(self.cache_dir + '/')
+                for obj in itr if logger.getEffectiveLevel() > logging.INFO else \
+                        tqdm(itr, desc='clearing cache directory'):
 
                     full_path = f'{self.cache_dir}/{obj}'
 
