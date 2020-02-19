@@ -2,17 +2,24 @@ from estimate_explosion_time.shared import get_custom_logger, main_logger_name, 
 import logging
 
 logger = get_custom_logger(main_logger_name)
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 logger.debug('logging level is DEBUG')
 
 from estimate_explosion_time.shared import simulation_dir
 from estimate_explosion_time.core.data_prep.data import DataHandler
+from estimate_explosion_time.analyses.rappid_simulations import rappidDH
 from estimate_explosion_time.cluster import n_tasks
+from estimate_explosion_time.analyses.rappid_simulations.convert_to_pickle_files import \
+    rappid_pkl_name, write_model_to_pickle, rappid_original_data
+import os
 
 
+for model_number in [3, 13]:
+    if not os.path.isfile(rappid_pkl_name(model_number)):
+        write_model_to_pickle(model_number)
+
+sed_directory = rappid_original_data + '/SEDs'
 methods = all_methods[:-1]
-simulation_name = 'rappid_sim_model03'
-
-rappid03_path = '/afs/ifh.de/user/n/neckerja/scratch/ZTF_20190512/ZTF_MSIP_MODEL03.pkl'
-
-rappid03DH = DataHandler.get_dhandler(simulation_name, rappid03_path)
+generated_with = 'mosfit'
+rappid03DH = rappidDH.get_dhandler(generated_with, sed_directory=sed_directory)
+rappid03DH.get_explosion_times_from_template()

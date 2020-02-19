@@ -14,12 +14,20 @@ import h5py
 import multiprocessing as mp
 import pandas as pd
 import argparse
+import logging
 import astropy.table as at
 import astropy.io.fits as afits
 from collections import OrderedDict
-from tqdm import tqdm_notebook
+from tqdm import tqdm_notebook, tqdm
+from estimate_explosion_time.shared import get_custom_logger, main_logger_name, TqdmToLogger
 
-from astrorapid.process_light_curves import InputLightCurve
+# from astrorapid.process_light_curves import InputLightCurve
+
+
+logger = get_custom_logger(__name__)
+logger.setLevel(logging.getLogger(main_logger_name).getEffectiveLevel())
+tqdm_deb = TqdmToLogger(logger, level=logging.DEBUG)
+tqdm_info = TqdmToLogger(logger, level=logging.INFO)
 
 
 class GetData(object):
@@ -134,13 +142,27 @@ def read_light_curves_from_snana_fits_files( head_files, phot_files, passbands=(
 
     light_curves_list = []
     header_data_list = []
-    for fileidx, headfilepath in enumerate(tqdm_notebook(head_files, desc='head files', leave=False)):
+    for fileidx, headfilepath in enumerate(tqdm(
+            head_files,
+            desc='head files',
+            leave=True,
+            # file=tqdm_info,
+            # mininterval=60
+    )):
+
         # print(fileidx, headfilepath)
         # Check that phot file correponds to head file
         assert phot_files[fileidx].split('_')[-2] == head_files[fileidx].split('_')[-2]
         header_HDU = afits.open(head_files[fileidx])
         header_data = header_HDU[1].data
-        for i, head in enumerate(tqdm_notebook(header_data, leave=False, desc='header data')):
+        for i, head in enumerate(tqdm(
+                header_data,
+                leave=True,
+                desc='header data',
+                # file=tqdm_info,
+                # mininterval=30
+        )):
+
             model_num = head['SIM_TYPE_INDEX']
             template_num = head['SIM_TEMPLATE_INDEX']
             snid = head['SNID']
