@@ -6,11 +6,15 @@ import pickle
 from astropy.table import Table
 from astropy.io import ascii
 import numpy as np
+from multiprocessing import Pool
+from tqdm import tqdm
 from estimate_explosion_time.shared import simulation_dir, real_data_dir, dh_dir,\
-    get_custom_logger, main_logger_name
+    get_custom_logger, main_logger_name, es_scratch_dir, TqdmToLogger
 from estimate_explosion_time.core.analyse_fits_from_simulation.results import SNCosmoResultHandler, \
     MosfitResultHandler, ResultError
 from estimate_explosion_time.core.analyse_fits_from_simulation.plots import Plotter
+from estimate_explosion_time.core.analyse_fits_from_simulation.get_source_explosion_time.find_explosion_time \
+    import get_explosion_time
 from estimate_explosion_time.core.fit_data.fitlauncher.fitlauncher import FitterError
 
 
@@ -20,7 +24,7 @@ logger.setLevel(logging.getLogger(main_logger_name).getEffectiveLevel())
 
 class DataHandler:
 
-    def __init__(self, path, name, simulation=True):
+    def __init__(self, path, name, simulation=True, **explosion_time_kwargs):
 
         self.name = name
         self.orig_path = path
@@ -36,6 +40,9 @@ class DataHandler:
         self.rhandlers = {}
         self.selected_indices = None
         self.selection_string = 'all'
+
+        self.meta_data = None
+        self.explosion_time_kwargs = None
 
         if simulation:
             diri = simulation_dir
@@ -105,6 +112,17 @@ class DataHandler:
 
         self.nlcs = len(os.listdir(self._mosfit_data_))
         logger.info(f'{self.nlcs} lightcurves found in data')
+        self.save_me()
+
+        # if simulation:
+        #
+        #     logger.debug('checking for true explosion times in data')
+        #
+        #     with open(self.get_data('sncosmo'), 'rb') as f:
+        #         sndata = pickle.load(f, encoding='latin1')
+        #
+        #     if None in sndata['meta']['t0']:
+        #         self.get_explosion_time_from_template(**explosion_time_kwargs)
 
     def write_pkl_to_csv(self):
 
@@ -135,7 +153,8 @@ class DataHandler:
         else:
             raise DataImportError('Folder with CSV files already exists!')
 
-        for ind in range(len(lcs)):
+        itr = range(len(lcs))
+        for ind in itr if logger.getEffectiveLevel() > logging.INFO else tqdm(itr, desc='writing to csv'):
 
             lc = Table(lcs[ind])
             lc['band'][lc['band'] == 'desi'] = 'ztfi'
@@ -165,22 +184,111 @@ class DataHandler:
                 else:
                     raise IndexError(f'Column {col} already exists!')
 
-            logger.debug(f'writing file {fname}')
             with open(fname, 'w') as fout:
                 ascii.write(lc, fout)
 
     def get_data(self, method):
 
         if 'sncosmo' in method:
-            logger.debug(f'using data stored in {self._sncosmo_data_}')
-            return self._sncosmo_data_
+            logger.debug(f'getting data stored in {self._sncosmo_data_}')
+            ret = self._sncosmo_data_
 
         elif 'mosfit' in method:
             if not os.path.isdir(self._mosfit_data_):
-                logger.info('converting pickled data to mosfit readable CSVs, please wait ...')
                 self.write_pkl_to_csv()
-            logger.debug(f'using data stored in {self._mosfit_data_}')
-            return self._mosfit_data_
+            logger.debug(f'getting data stored in {self._mosfit_data_}')
+            ret = self._mosfit_data_
+        else:
+            raise Exception(f'Method {method} not known!')
+
+        if es_scratch_dir in ret:
+            return ret
+        elif 'input' in ret:
+            return es_scratch_dir + '/input' + ret.split('input')[1]
+        else:
+            raise DataImportError('No idea where to look for the data :(')
+
+    def get_spectral_time_evolution_file(self, indice):
+        """ to be implemented in subclasses """
+        raise NotImplementedError
+
+    def get_explosion_times_from_template(self, ncpu=10, **kwargs):
+
+        logger.info('getting explosion times')
+        with open(self.get_data('sncosmo'), 'rb') as f:
+            sndata = pickle.load(f, encoding='latin1')
+
+        meta_data = sndata['meta']
+
+        missing_t0_mask = np.equal(np.array(meta_data['t0']), None)
+        missing_t0_indices = np.where(missing_t0_mask)[0]
+
+        # set these variable so they can be used by get_explosion_time_from_template_single
+        self.meta_data = meta_data
+        self.explosion_time_kwargs = kwargs
+
+        logging.debug('starting multiprocessing')
+        with Pool(ncpu) as p:
+
+            if logger.getEffectiveLevel() == logging.INFO:
+                pbar_length = len(missing_t0_indices)
+                with tqdm(total=pbar_length, desc='calculating explosion times') as pbar:
+                    for i, _ in enumerate(p.imap_unordered(
+                            self.get_explosion_time_from_template_single,
+                            missing_t0_indices)):
+                        pbar.update()
+            else:
+                p.map(self.get_explosion_time_from_template_single,
+                      missing_t0_indices)
+
+        # unset variables
+        self.meta_data = None
+        self.explosion_time_kwargs = None
+
+        # for i in missing_t0_indices if logger.getEffectiveLevel() != logging.INFO else \
+        #         tqdm(missing_t0_indices, desc='getting explosion times'):
+        #
+        #     logger.debug('for indice {0}'.format(i))
+        #     t_exp = self.get_explosion_time_from_template_single(i, meta_data, **kwargs)
+        #     meta_data['t0'] = t_exp
+
+        self.save_me()
+
+    def get_explosion_time_from_template_single(self, ind, meta_data=None, **explosion_time_kwargs):
+        """
+        get the explosion time for a single Supernova. Arguments can be set directly or by setting self.meta_data
+        and self.explosion_time_kwargs respectively. If bith are set an Error is raised
+        :param ind: int, indice of the sueprnova
+        :param meta_data: dict, the meta data for the supernova
+        :param explosion_time_kwargs: dict, keyword arguments passed to get_explosion_time()
+        :return: float
+        """
+
+        if meta_data and self.meta_data:
+            raise DataImportError('Two arguments for meta data found!')
+
+        if explosion_time_kwargs and self.explosion_time_kwargs:
+            raise DataImportError('Two sets of keyword arguments found!')
+
+        if not meta_data and not self.meta_data:
+            with open(self.get_data('sncosmo'), 'rb') as f:
+                sndata = pickle.load(f, encoding='latin1')
+            meta_data = sndata['meta']
+
+        if not meta_data:
+            meta_data = self.meta_data
+
+        if not explosion_time_kwargs:
+            explosion_time_kwargs = self.explosion_time_kwargs
+
+        t_exp = get_explosion_time(self.get_spectral_time_evolution_file(ind),
+                               redshift=meta_data['z'][ind],
+                               peak_mjd=meta_data['t_peak'][ind],
+                               **explosion_time_kwargs)
+
+        meta_data['t0'][ind] = t_exp
+        return t_exp
+
 
     def use_method(self, method, job_id):
 
