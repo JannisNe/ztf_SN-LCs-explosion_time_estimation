@@ -15,7 +15,8 @@ desy_submit_file = f'{multiprocess_dir}/submitDESY.sh'
 
 
 def make_desy_submit_file(method_name, indir, outdir, ntasks, cache,
-                          hrss='8G', hcpu='23:59:00', tasks_in_group=100, missing_indice_file=None):
+                          hrss='8G', hcpu='23:59:00', tasks_in_group=100, missing_indice_file=None,
+                          reduce_mosfit_output=True):
 
     njobs = int(math.ceil( ntasks / tasks_in_group))
 
@@ -49,8 +50,10 @@ def make_desy_submit_file(method_name, indir, outdir, ntasks, cache,
                '    echo "doing mosfit fit" \n' \
                '    printf \'n\\n%d\\nn\\nn\\nn\' $lcid | ' \
                'mosfit -e ${INDIR}/${lcid}.csv -m default --quiet -D nester -R ' \
-              f'-N {walkers} \n' \
-              f'    python {reduce_file_script} $OUTNAME'
+              f'-N {walkers} \n'
+
+        if reduce_mosfit_output:
+            fill += f'    python {reduce_file_script} $OUTNAME'
 
 
     else:
