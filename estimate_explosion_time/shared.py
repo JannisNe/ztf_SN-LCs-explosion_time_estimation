@@ -36,7 +36,6 @@ class TqdmToLogger(io.StringIO):
 
 main_logger_name = 'main script'
 handler = logging.StreamHandler()
-# format = logging.Formatter('%(name)s:\n %(levelname)s - %(message)s')
 format = logging.Formatter('%(levelname)s - %(name)s: %(message)s')
 handler.setFormatter(format)
 
@@ -72,7 +71,6 @@ try:
 except KeyError:
     es_scratch_dir = str(Path.home())
     raise DirectoryError('No scratch directory has been set!')
-    # logger.warning("No scratch directory has been set. Using home directory as default.")
 
 output_dir = f'{es_scratch_dir}/output'
 storage_dir = f'{es_scratch_dir}/storage'
