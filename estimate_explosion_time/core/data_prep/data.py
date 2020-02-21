@@ -6,7 +6,7 @@ import pickle
 from astropy.table import Table
 from astropy.io import ascii
 import numpy as np
-from multiprocessing import Pool
+import multiprocessing
 from tqdm import tqdm
 from estimate_explosion_time.shared import simulation_dir, real_data_dir, dh_dir,\
     get_custom_logger, main_logger_name, es_scratch_dir, TqdmToLogger
@@ -43,6 +43,7 @@ class DataHandler:
 
         self.meta_data = None
         self.explosion_time_kwargs = None
+        self.queue = None
 
         if simulation:
             diri = simulation_dir
@@ -190,13 +191,13 @@ class DataHandler:
     def get_data(self, method):
 
         if 'sncosmo' in method:
-            logger.debug(f'getting data stored in {self._sncosmo_data_}')
+            logger.debug(f'getting {self._sncosmo_data_}')
             ret = self._sncosmo_data_
 
         elif 'mosfit' in method:
             if not os.path.isdir(self._mosfit_data_):
                 self.write_pkl_to_csv()
-            logger.debug(f'getting data stored in {self._mosfit_data_}')
+            logger.debug(f'getting {self._mosfit_data_}')
             ret = self._mosfit_data_
         else:
             raise Exception(f'Method {method} not known!')
@@ -213,6 +214,11 @@ class DataHandler:
         raise NotImplementedError
 
     def get_explosion_times_from_template(self, ncpu=10, **kwargs):
+        """
+        Get the explosion times for all SNe from the correspodning template and save it to the meta data.
+        :param ncpu: number of cpus to use in multiprocessing
+        :param kwargs: to be passed to get_explosion_time_from_template_single()
+        """
 
         logger.info('getting explosion times')
         with open(self.get_data('sncosmo'), 'rb') as f:
@@ -227,30 +233,40 @@ class DataHandler:
         self.meta_data = meta_data
         self.explosion_time_kwargs = kwargs
 
-        logging.debug('starting multiprocessing')
-        with Pool(ncpu) as p:
+        logger.debug('starting multiprocessing')
+        with multiprocessing.Pool(ncpu) as p:
 
+            # case difference so that for INFO a nice progress bar is displayed
             if logger.getEffectiveLevel() == logging.INFO:
+                results = list()
                 pbar_length = len(missing_t0_indices)
-                with tqdm(total=pbar_length, desc='calculating explosion times') as pbar:
+                with tqdm(total=pbar_length, desc='calculating explosion times', mininterval=15) as pbar:
                     for i, _ in enumerate(p.imap_unordered(
                             self.get_explosion_time_from_template_single,
                             missing_t0_indices)):
+                        results.append(_)
                         pbar.update()
+
             else:
-                p.map(self.get_explosion_time_from_template_single,
+                results = p.map(self.get_explosion_time_from_template_single,
                       missing_t0_indices)
+
+        results_array = np.array(results)
+
+        for t_exp, ind in results_array:
+            sndata['meta']['t0'][int(ind)] = t_exp
+
+        if np.any(np.array(sndata['meta']['t0']) == None):
+            raise DataImportError('Still some explosion times missing!')
+
+        # save data
+        logger.info('saving data to ' + self.get_data('sncosmo'))
+        with open(self.get_data('sncosmo'), 'wb') as f:
+            pickle.dump(sndata, f)
 
         # unset variables
         self.meta_data = None
         self.explosion_time_kwargs = None
-
-        # for i in missing_t0_indices if logger.getEffectiveLevel() != logging.INFO else \
-        #         tqdm(missing_t0_indices, desc='getting explosion times'):
-        #
-        #     logger.debug('for indice {0}'.format(i))
-        #     t_exp = self.get_explosion_time_from_template_single(i, meta_data, **kwargs)
-        #     meta_data['t0'] = t_exp
 
         self.save_me()
 
@@ -261,8 +277,10 @@ class DataHandler:
         :param ind: int, indice of the sueprnova
         :param meta_data: dict, the meta data for the supernova
         :param explosion_time_kwargs: dict, keyword arguments passed to get_explosion_time()
-        :return: float
+        :return: tuple of floats, explosion time and indice
         """
+
+        logger.debug(f'indice = {ind}')
 
         if meta_data and self.meta_data:
             raise DataImportError('Two arguments for meta data found!')
@@ -270,7 +288,8 @@ class DataHandler:
         if explosion_time_kwargs and self.explosion_time_kwargs:
             raise DataImportError('Two sets of keyword arguments found!')
 
-        if not meta_data and not self.meta_data:
+        if (not meta_data) and (not self.meta_data):
+            logger.debug('Variable meta_data not set. Getting data...')
             with open(self.get_data('sncosmo'), 'rb') as f:
                 sndata = pickle.load(f, encoding='latin1')
             meta_data = sndata['meta']
@@ -286,9 +305,7 @@ class DataHandler:
                                peak_mjd=meta_data['t_peak'][ind],
                                **explosion_time_kwargs)
 
-        meta_data['t0'][ind] = t_exp
-        return t_exp
-
+        return t_exp, ind
 
     def use_method(self, method, job_id):
 
