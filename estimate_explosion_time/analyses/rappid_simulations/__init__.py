@@ -52,6 +52,8 @@ class rappidDH(DataHandler):
 
     def get_spectral_time_evolution_file(self, indice):
 
+        logger.debug(f'getting spectral time evolution file for {indice}')
+
         sed_directory = self.sed_directory if os.path.exists(self.sed_directory) \
             else es_scratch_dir + '/input' + self.sed_directory.split('input')[1]
 

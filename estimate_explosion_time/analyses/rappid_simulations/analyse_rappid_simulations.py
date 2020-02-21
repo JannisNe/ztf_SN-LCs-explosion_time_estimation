@@ -21,5 +21,7 @@ for model_number in [3, 13]:
 sed_directory = rappid_original_data + '/SEDs'
 methods = all_methods[:-1]
 generated_with = 'mosfit'
-rappid03DH = rappidDH.get_dhandler(generated_with, sed_directory=sed_directory)
-rappid03DH.get_explosion_times_from_template()
+thisDH = rappidDH.get_dhandler(generated_with, sed_directory=sed_directory)
+# thisDH.get_explosion_times_from_template(ncpu=25)
+thisDH.select_and_adjust_selection_string()
+thisDH.results('mosfit')
