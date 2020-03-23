@@ -47,7 +47,7 @@ def write_model_to_pickle(model_number):
                {'t0': [],
                 'z': [],
                 'idx_orig': [],
-                'dlum': [],
+                'lumdist': [],
                 'hostebv': [],
                 'model': [],
                 'model_type':[],
@@ -60,7 +60,7 @@ def write_model_to_pickle(model_number):
         sim['meta']['t_peak'].append(head[6])
         sim['meta']['z'].append(head[4])
         sim['meta']['idx_orig'].append(int(head[1]))
-        sim['meta']['dlum'].append(head[5])
+        sim['meta']['lumdist'].append(head[5])
         sim['meta']['hostebv'].append(head[7])
         sim['meta']['model'].append(head[-1])
         sim['meta']['model_type'].append('mosfit' if int(head[0]) == 0 else

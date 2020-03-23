@@ -12,16 +12,30 @@ from estimate_explosion_time.cluster import n_tasks
 from estimate_explosion_time.analyses.rappid_simulations.convert_to_pickle_files import \
     rappid_pkl_name, write_model_to_pickle, rappid_original_data
 import os
+import argparse
 
 
-for model_number in [3, 13]:
-    if not os.path.isfile(rappid_pkl_name(model_number)):
-        write_model_to_pickle(model_number)
+parser = argparse.ArgumentParser()
+parser.add_argument('-f', '--force', default=False, type=bool)
+args = parser.parse_args()
+
+# for model_number in [3, 13]:
+#     if not os.path.isfile(rappid_pkl_name(model_number)):
+#         write_model_to_pickle(model_number)
 
 sed_directory = rappid_original_data + '/SEDs'
 methods = all_methods[:-1]
-generated_with = 'mosfit'
+generated_with = 'templates'
 thisDH = rappidDH.get_dhandler(generated_with, sed_directory=sed_directory)
 # thisDH.get_explosion_times_from_template(ncpu=25)
-thisDH.select_and_adjust_selection_string()
-thisDH.results('mosfit')
+
+dt = 10
+
+thisDH.select_and_adjust_selection_string(
+    # req_prepeak=2,
+    # req_std=None,
+    # check_band='any',
+    # req_texp_dif=['mosfit', dt]
+)
+
+thisDH.results('mosfit', force=args.force, n=20, dt=dt)

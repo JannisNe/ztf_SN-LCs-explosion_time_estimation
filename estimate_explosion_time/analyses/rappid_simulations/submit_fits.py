@@ -43,4 +43,4 @@ logger.debug(
 )
 
 missing_indice_file = f'{pickle_dir}/{rappidDH.name}/{fitter.method_name}/missing_indices.txt'
-fitter.fit_lcs(rappidDH, tasks_in_group=100)
+fitter.fit_lcs(rappidDH, tasks_in_group=1, missing_indice_file=missing_indice_file, ntasks=3)

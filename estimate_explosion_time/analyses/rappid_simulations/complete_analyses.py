@@ -24,13 +24,13 @@ sed_directory = rappid_original_data + '/SEDs'
 
 # get the lightcurves either generated using MOSFiT type 'mosfit'
 # or using specral templates type 'templates'
-generated_with = 'mosfit'
+generated_with = 'templates'
 
 # get the DataHandler object who takes care of all the book keeping
 thisDH = rappidDH.get_dhandler(generated_with, sed_directory=sed_directory)
 
 # get the explosion times for the simulations
-thisDH.get_explosion_times_from_template(ncpu=25)
+thisDH.get_explosion_times_from_template(ncpu=15)
 
 # fit the lightcurves with the desired method (only 'mosfit' is good!)
 method = 'mosfit'
@@ -42,7 +42,8 @@ logger.debug(
 )
 
 missing_indice_file = f'{pickle_dir}/{thisDH.name}/{fitter.method_name}/missing_indices.txt'
-fitter.fit_lcs(rappidDH, tasks_in_group=100,
+fitter.fit_lcs(thisDH,
+               tasks_in_group=100,
                # missing_indice_file=missing_indice_file  # to be used when repeating the fit
                )
 
