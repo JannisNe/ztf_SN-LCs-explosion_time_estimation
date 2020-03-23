@@ -132,7 +132,7 @@ class Plotter:
             logger.debug(f'plotting lightcurve with indice {indice}')
             self.plot_lc(indice, f'{self.lc_dir}/bad_lcs')  # TODO: INDICES!
 
-    def plot_lc(self, indice, plot_in_dir='default'):
+    def plot_lc(self, indice, plot_in_dir='default', **kwargs):
 
         if plot_in_dir == 'default':
             plot_in_dir = self.lc_dir
@@ -141,6 +141,13 @@ class Plotter:
             logger.info(f'making directory {plot_in_dir}')
             os.mkdir(plot_in_dir)
 
+        with open(self.dhandler.get_data('sncosmo'), 'rb') as f:
+            data = pickle.load(f, encoding='latin1')
+
+        original_id = data['meta']['idx_orig'][indice]
+
+        logger.debug(f'plotting {original_id}')
+
         fig, ax = plt.subplots()
         plt.gca().invert_yaxis()
 
@@ -148,7 +155,7 @@ class Plotter:
         if 'sncosmo' in self.rhandler.method:
             self.plot_lc_with_sncosmo_fit(indice, ax)
         elif 'mosfit' in self.rhandler.method:
-            self.plot_lc_with_mosfit_fit(indice, ax)
+            self.plot_lc_with_mosfit_fit(indice, ax, **kwargs)
         else:
             raise PlotterError('Jesus, what\'s that method, you crazy dog?! You\'re a dog, man!')
 
@@ -169,6 +176,7 @@ class Plotter:
         else:
             logger.info('Data from fits has not been collected! Can\'t draw explosion time estimate ...')
 
+        ax.set_title(original_id)
         ax.set_xlabel('Phase in MJD')
         ax.set_ylabel('Apparent Magnitude')
 
@@ -319,6 +327,8 @@ class Plotter:
         for full_band in band_list:
             (band, inst, tele, syst, bset) = full_band
 
+            logger.debug(f'plotting {band}')
+
             extra_nice = ', '.join(list(filter(None, OrderedDict.fromkeys((inst, syst, bset)).keys())))
             nice_name = band + ((' [' + extra_nice + ']') if extra_nice else '')
 
@@ -345,25 +355,27 @@ class Plotter:
                 if label:
                     used_bands = list(set(used_bands + [full_band]))
 
-            for rz in realizations:
-                if not len(rz):
-                    continue
+            rz_mask = [False if not len(rz) else True for rz in realizations]
+
+            if np.any(rz_mask):
                 logger.debug('plotting individual realizations')
-                xs, ys, vs, us = zip(*rz)
-                label = '' if full_band in used_bands or full_band in real_band_list else nice_name
-                if max(vs) == 0.0:
-                    ax.plot(xs, ys, color=bandcolors(band),
-                             label=label, linewidth=0.5, alpha=0.1)
-                else:
-                    xs = np.array(xs)
-                    ymi = np.array(ys) - np.array([np.inf if u else v[0] for v, u in zip(vs, us)])
-                    yma = np.array(ys) + np.array([v[1] for v in vs])
-                    ax.fill_between(xs, ymi, yma, color=bandcolors(band), edgecolor=None,
-                                     label=label, alpha=1.0 / numrz, linewidth=0.0)
-                    ax.plot(xs, ys, color=bandcolors(band),
-                             label=label, alpha=0.1, linewidth=0.5)
-                if label:
-                    used_bands = list(set(used_bands + [full_band]))
+                for rz in np.array(realizations)[rz_mask]:
+
+                    xs, ys, vs, us = zip(*rz)
+                    label = '' if full_band in used_bands or full_band in real_band_list else nice_name
+                    if max(vs) == 0.0:
+                        ax.plot(xs, ys, color=bandcolors(band),
+                                 label=label, linewidth=0.5, alpha=0.1)
+                    else:
+                        xs = np.array(xs)
+                        ymi = np.array(ys) - np.array([np.inf if u else v[0] for v, u in zip(vs, us)])
+                        yma = np.array(ys) + np.array([v[1] for v in vs])
+                        ax.fill_between(xs, ymi, yma, color=bandcolors(band), edgecolor=None,
+                                         label=label, alpha=1.0 / numrz, linewidth=0.0)
+                        ax.plot(xs, ys, color=bandcolors(band),
+                                 label=label, alpha=0.1, linewidth=0.5)
+                    if label:
+                        used_bands = list(set(used_bands + [full_band]))
 
             if real_data:
                 for s in range(2):
