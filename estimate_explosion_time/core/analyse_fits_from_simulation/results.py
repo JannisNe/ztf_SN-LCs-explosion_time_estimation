@@ -248,10 +248,10 @@ class MosfitResultHandler(ResultHandler):
             sim = pickle.load(f, encoding='latin1')
 
         t_exp_true = sim['meta']['t0']  # TODO: get texp_true!!!
-        logger.warning('USING T0 AND NOT TEXP!!!')
+        # logger.warning('USING T0 AND NOT TEXP!!!')
 
         itr = os.listdir(self.pickle_dir)
-        for file in itr if logger.getEffectiveLevel() > logging.DEBUG else tqdm(itr, desc='collecting fit results'):
+        for file in itr if logger.getEffectiveLevel() > logging.INFO else tqdm(itr, desc='collecting fit results'):
 
             if file.startswith('.') or 'missing' in file:
                 continue

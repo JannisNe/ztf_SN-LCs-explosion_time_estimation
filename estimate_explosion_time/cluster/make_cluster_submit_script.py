@@ -18,7 +18,7 @@ def make_desy_submit_file(method_name, indir, outdir, ntasks, cache,
                           hrss='8G', hcpu='23:59:00', tasks_in_group=100, missing_indice_file=None,
                           reduce_mosfit_output=True):
 
-    njobs = int(math.ceil( ntasks / tasks_in_group))
+    njobs = int(math.ceil(ntasks / tasks_in_group))
 
     if 'sncosmo' in method_name:
 
@@ -104,7 +104,8 @@ def make_desy_submit_file(method_name, indir, outdir, ntasks, cache,
            "    fi \n"
 
     txt1+= "    lcid=$c \n" if not missing_indice_file \
-      else "    lcid=\"$(sed \"${c}q;d\" " + missing_indice_file + ")\" \n"
+      else "    dummy_c=$(expr $c + 1) \n" \
+           "    lcid=\"$(sed \"${dummy_c}q;d\" " + missing_indice_file + ")\" \n"
 
     txt1+= "    echo 'fitting lightcurve ' $lcid \n" \
            "    TMPDIR=" + cache + "/tmp${lcid} \n" \

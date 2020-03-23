@@ -58,7 +58,7 @@ class Fitter:
 
 
         dh_job_id = None
-        if self.method_name in dhandler.rhandlers.keys():
+        if self.method_name in dhandler.rhandlers:
             dh_job_id = dhandler.rhandlers[self.method_name].job_id
 
         # quiere cluster to see if there are still tasks from previuos fit running

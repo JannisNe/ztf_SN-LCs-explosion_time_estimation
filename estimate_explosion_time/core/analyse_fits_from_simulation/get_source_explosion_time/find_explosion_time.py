@@ -91,7 +91,7 @@ def get_explosion_time_from_template(template, band=None, peak_mjd=None, redshif
     tstart = min(time[flux > flux_threshold])
     logger.debug('template starts at ' + str(tstart))
     tstart_rel = tstart / (max(time) - min(time))
-    logger.debug('relative to the whole template time that\'s ' + str(tstart_rel))
+    logger.debug(f'relative to the whole template time that\'s {tstart_rel:.3f}')
 
     # initialize SNCosmo Model in order to set the redshift
     # this now refers to the observer frame
