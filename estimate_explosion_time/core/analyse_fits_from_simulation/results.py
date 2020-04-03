@@ -32,6 +32,7 @@ class ResultHandler:
         self.collected_data = None
         self.t_exp_dif = None
         self.t_exp_dif_error = None
+        self.t_exp_ic = None
         self.job_id = job_id
 
     def save_data(self):
@@ -50,9 +51,16 @@ class ResultHandler:
         self.t_exp_dif = np.array([data['t_exp_dif']
                                    if data is not None else np.nan
                                    for data in self.collected_data])
+
         self.t_exp_dif_error = np.array([data['t_exp_dif_error']
                                          if data is not None else np.nan
                                          for data in self.collected_data])
+
+        self.t_exp_ic = np.array([data['t_exp_dif_0.9'] if data is not None else
+                                  np.nan
+                                  for data in self.collected_data])
+
+        logger.debug(f'lenghth of self.t_exp_ic is {len(self.t_exp_ic)}. First element is {self.t_exp_ic[0]}')
 
     def collect_results(self, force=False):
 
@@ -113,8 +121,9 @@ class ResultHandler:
                             logger.info('submitted fits, exiting ...')
 
                         inpt = input('continue without the missing results? [y/n] ')
-                        if not inpt in ['y', 'yes']:
-                            sys.exit(0)
+                        if inpt not in ['y', 'yes']:
+                            self.collect_results(force=force)
+                            # sys.exit(0)
 
                     self.sub_collect_results(indices, listed_pickle_dir)
                     collected_data_filename = f'{self.pickle_dir}.pkl'
@@ -244,7 +253,7 @@ class MosfitResultHandler(ResultHandler):
         logger.info('collecting fit results')
 
         data = [None] * (max(indices) + 1)
-        with open(self.dhandler._sncosmo_data_, 'rb') as f:
+        with open(self.dhandler.get_data('sncosmo'), 'rb') as f:
             sim = pickle.load(f, encoding='latin1')
 
         t_exp_true = sim['meta']['t0']  # TODO: get texp_true!!!
@@ -288,15 +297,17 @@ class MosfitResultHandler(ResultHandler):
             posterior_t_exp = model['realizations'][0]['parameters']
             texp_fit = float(posterior_t_exp['reference_texplosion']) + float(posterior_t_exp['texplosion']['median'])
 
+            ic90 = np.array([float(posterior_t_exp['texplosion']['confidence_interval_lower']),
+                                           float(posterior_t_exp['texplosion']['confidence_interval_upper'])]) + \
+                   float(posterior_t_exp['reference_texplosion']) - float(t_exp_true[indice])
+
             data[ind] = {
                 't_exp_posterior': posterior_t_exp,
                 't_exp_fit': texp_fit,
                 't_exp_true': t_exp_true[indice],
                 't_exp_dif': texp_fit - t_exp_true[indice],
-                't_exp_dif_error': float(posterior_t_exp['texplosion']['gaussian_error']),
-                't_exp_dif_0.9': np.array([float(posterior_t_exp['texplosion']['confidence_interval_lower']),
-                                           float(posterior_t_exp['texplosion']['confidence_interval_upper'])]) +
-                                 float(posterior_t_exp['reference_texplosion'])
+                't_exp_dif_0.9': ic90,
+                't_exp_dif_error': max(ic90) - min(ic90)
             }
 
         self.collected_data = data
