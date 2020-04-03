@@ -5,6 +5,7 @@ import logging
 import pickle
 from astropy.table import Table
 from astropy.io import ascii
+import astropy.cosmology as cosmo
 import numpy as np
 import multiprocessing
 from tqdm import tqdm
@@ -137,6 +138,7 @@ class DataHandler:
             'u_time': 'MJD',
             'redshift': 'arb',
             'ebv': 'arb',
+            'lumdist': 'arb',
             'ID': 'arb'
         }
 
@@ -146,6 +148,9 @@ class DataHandler:
             lcs = data['lcs']
             meta = data['meta']
             self.nlcs = len(lcs)
+
+        if not 'lumdist' not in meta:
+            logging.warning('Luminosity distance not given! Calculating it using Planck15.')
 
         if not os.path.exists(self._mosfit_data_):
             logger.info(f'making directory {self._mosfit_data_}')
@@ -171,19 +176,28 @@ class DataHandler:
                         lc[col] = [f'{ind}'] * len(lc)
 
                     if col == 'redshift':
-                        lc[col] = [meta['z'][ind]] * len(lc)
+                        lc[col] = [meta['z'][ind] if 'z' in meta else None] * len(lc)
 
                     if col == 'ebv':
-                        lc[col] = [meta['hostebv'][ind]] * len(lc)
+                        lc[col] = [meta['hostebv'][ind] if 'hostebv' in meta else None] * len(lc)
 
                     if col == 'ID':
-                        lc[col] = [int(meta['idx_orig'][ind])] * len(lc)
+                        try:
+                            lc[col] = [int(meta['idx_orig'][ind]) if 'idx_orig' in meta else None] * len(lc)
+                        except ValueError:
+                            lc[col] = [meta['idx_orig'][ind] if 'idx_orig' in meta else None] * len(lc)
 
                     if col == 'lumdist':
-                        lc[col] = [meta['lumdist'][ind]] * len(lc)
+                        lc[col] = [meta['lumdist'][ind] if 'lumdist' in meta else
+                                   cosmo.Planck15.luminosity_distance(meta['z'][ind]) if 'z' in meta else
+                                   None] * len(lc)
+
+                    if col == 'zpsys':
+                        lc[col] = [meta['zpsys'][ind] if 'zpsys' in meta else None] * len(lc)
 
                 else:
-                    raise IndexError(f'Column {col} already exists!')
+                    logger.warning(f'Column {col} already exists!')
+                    # raise IndexError(f'Column {col} already exists!')
 
             with open(fname, 'w') as fout:
                 ascii.write(lc, fout)
@@ -213,10 +227,11 @@ class DataHandler:
         """ to be implemented in subclasses """
         raise NotImplementedError
 
-    def get_explosion_times_from_template(self, ncpu=10, **kwargs):
+    def get_explosion_times_from_template(self, ncpu=10, force_all=False, **kwargs):
         """
         Get the explosion times for all SNe from the correspodning template and save it to the meta data.
         :param ncpu: number of cpus to use in multiprocessing
+        :param force_all: bool, if True all explosion times will be estimated, default False
         :param kwargs: to be passed to get_explosion_time_from_template_single()
         """
 
@@ -226,8 +241,14 @@ class DataHandler:
 
         meta_data = sndata['meta']
 
-        missing_t0_mask = np.equal(np.array(meta_data['t0']), None)
+        missing_t0_mask = np.equal(np.array(meta_data['t0']), None) if not force_all else [True] * self.nlcs
         missing_t0_indices = np.where(missing_t0_mask)[0]
+
+        logger.debug(f'{len(missing_t0_indices)} missing explosion times')
+
+        if len(missing_t0_indices) == 0:
+            logger.info('No missing explosion times.')
+            return
 
         # set these variable so they can be used by get_explosion_time_from_template_single
         self.meta_data = meta_data
@@ -240,7 +261,7 @@ class DataHandler:
             if logger.getEffectiveLevel() == logging.INFO:
                 results = list()
                 pbar_length = len(missing_t0_indices)
-                with tqdm(total=pbar_length, desc='calculating explosion times', mininterval=15) as pbar:
+                with tqdm(total=pbar_length, desc='calculating explosion times') as pbar:
                     for i, _ in enumerate(p.imap_unordered(
                             self.get_explosion_time_from_template_single,
                             missing_t0_indices)):
@@ -249,11 +270,16 @@ class DataHandler:
 
             else:
                 results = p.map(self.get_explosion_time_from_template_single,
-                      missing_t0_indices)
+                                missing_t0_indices)
 
         results_array = np.array(results)
 
-        for t_exp, ind in results_array:
+        for t_exp, ind, idx_orig in results_array:
+
+            idx_orig_orig = sndata['meta']['idx_orig'][int(ind)]
+            if idx_orig != idx_orig_orig:
+                raise DataInconsistencyError(f'Original Index {idx_orig_orig}: Result array has index {idx_orig}!')
+
             sndata['meta']['t0'][int(ind)] = t_exp
 
         if np.any(np.array(sndata['meta']['t0']) == None):
@@ -273,8 +299,8 @@ class DataHandler:
     def get_explosion_time_from_template_single(self, ind, meta_data=None, **explosion_time_kwargs):
         """
         get the explosion time for a single Supernova. Arguments can be set directly or by setting self.meta_data
-        and self.explosion_time_kwargs respectively. If bith are set an Error is raised
-        :param ind: int, indice of the sueprnova
+        and self.explosion_time_kwargs respectively. If both are set an Error is raised
+        :param ind: int, indice of the supernova
         :param meta_data: dict, the meta data for the supernova
         :param explosion_time_kwargs: dict, keyword arguments passed to get_explosion_time()
         :return: tuple of floats, explosion time and indice
@@ -297,23 +323,25 @@ class DataHandler:
         if not meta_data:
             meta_data = self.meta_data
 
-        if not explosion_time_kwargs:
+        if not explosion_time_kwargs and self.explosion_time_kwargs:
             explosion_time_kwargs = self.explosion_time_kwargs
 
         t_exp = get_explosion_time(self.get_spectral_time_evolution_file(ind),
-                               redshift=meta_data['z'][ind],
-                               peak_mjd=meta_data['t_peak'][ind],
-                               **explosion_time_kwargs)
+                                   redshift=meta_data['z'][ind],
+                                   peak_mjd=meta_data['t_peak'][ind],
+                                   **explosion_time_kwargs)
 
-        return t_exp, ind
+        idx_orig = meta_data['idx_orig'][ind]
 
-    def use_method(self, method, job_id):
+        return t_exp, ind, idx_orig
+
+    def use_method(self, method, job_id, force_new_rhandler=False):
 
         logger.debug(f'DataHandler for {self.name} configured to use {method}')
         self.latest_method = method
 
         # initialize ResultHandler for the method
-        if self.latest_method not in self.rhandlers.keys():
+        if self.latest_method not in self.rhandlers.keys() or force_new_rhandler:
 
             if 'sncosmo' in self.latest_method:
                 rhandler = SNCosmoResultHandler(self, job_id)
@@ -368,6 +396,10 @@ class DataHandler:
             method = self.latest_method
         logger.info(f'getting results for {self.name} analyzed by {method}')
 
+        if force:
+            logger.info('forcing re-collecting of results!')
+            self.use_method(method=method, job_id=None, force_new_rhandler=True)
+
         rhandler = self.rhandlers[method]
         plotter = Plotter(self, method)
 
@@ -378,6 +410,7 @@ class DataHandler:
             rhandler.collect_results(force=force)
             rhandler.get_t_exp_dif_distribution()
             plotter.hist_t_exp_dif(cl)
+            plotter.hist_ic90_deviaton()
             plotter.plot_tdif_tdife()
             plotter.plot_lcs_where_fit_fails(**kwargs)
         except KeyboardInterrupt:
@@ -389,9 +422,11 @@ class DataHandler:
     def select_and_adjust_selection_string(self, select_all=False, **kwargs):
 
         if (len(kwargs.keys()) < 1) or select_all:
+            logger.debug('selecting all SNe')
             self.selection_string = 'all'
             self.selected_indices = list(range(self.nlcs))
         else:
+            logger.debug('making selection')
             self.selection_string = ''
             for kw_item in kwargs.items():
                 if kw_item[1] is not None:
@@ -426,8 +461,6 @@ class DataHandler:
         :return: list of IDs that comply with the requests
                  list of IDs that don't comply
         """
-
-        give = [945, 946, 948, 949]
 
         with open(self._sncosmo_data_, 'rb') as f:
             data = pickle.load(f, encoding='latin1')
@@ -481,7 +514,6 @@ class DataHandler:
 
                 # check for compliance with required pre peak epochs
                 npre_peak = len(lc_masked[lc_masked['time'] < peak_phase])
-                if j in give: logger.debug('LC {0}: {1} N_prepeak: {2}'.format(j, band, npre_peak))
                 if req_prepeak is not None and type(req_prepeak) == dict and band in req_prepeak.keys():
                     comply_prepeak[band] = npre_peak >= req_prepeak[band]
                 elif req_prepeak is not None and type(req_prepeak) == int:
@@ -610,5 +642,10 @@ class DataImportWarning(UserWarning):
 
 
 class DataImportError(Exception):
+    def __init__(self, msg):
+        self.msg = msg
+
+
+class DataInconsistencyError(Exception):
     def __init__(self, msg):
         self.msg = msg
