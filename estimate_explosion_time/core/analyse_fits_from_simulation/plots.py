@@ -14,6 +14,8 @@ from scipy.stats import kde
 from scipy.optimize import curve_fit
 from estimate_explosion_time.shared import plots_dir, get_custom_logger, main_logger_name, \
     pickle_dir, bandcolors
+from estimate_explosion_time.core.analyse_fits_from_simulation.get_source_explosion_time.find_explosion_time import \
+    get_explosion_time
 
 warnings.simplefilter('ignore', matplotlib.MatplotlibDeprecationWarning)
 
@@ -45,10 +47,10 @@ class Plotter:
         """
         logger.debug('plotting histogramm of delta t_exp')
 
-        tdif = np.array(self.rhandler.t_exp_dif)[self.dhandler.selected_indices]
-        tdif = tdif[~np.isnan(tdif)]
+        tdif_with_nans = np.array(self.rhandler.t_exp_dif)[self.dhandler.selected_indices]
+        tdif = tdif_with_nans[~np.isnan(tdif_with_nans)]
         tdif_e = np.array(self.rhandler.t_exp_dif_error)[self.dhandler.selected_indices]
-        tdif_e = tdif_e[~np.isnan(tdif_e)]
+        tdif_e = tdif_e[~np.isnan(tdif_with_nans)]
 
         ic = [0, 0]
         ic[0], tmean, ic[1] = np.quantile(tdif, [0.5-cl/2, 0.5, 0.5+cl/2])
@@ -121,7 +123,43 @@ class Plotter:
         plt.savefig(f'{self.dir}/difference_error_relation.pdf')
         plt.close()
 
-    def plot_lcs_where_fit_fails(self, dt=5, n=10):
+    def hist_ic90_deviaton(self):
+        """
+
+        :return:
+        """
+        tdif = np.array(self.rhandler.t_exp_dif)[self.dhandler.selected_indices]
+        tic = self.rhandler.t_exp_ic[self.dhandler.selected_indices]
+        tic = tic[~np.isnan(tdif)]  # tic should only be nan where thdif is also nan!
+        logger.debug(f'length of tic is {len(tic)}. first element is {tic[0]}')
+
+        tdif_minus_ic = np.array(
+            [0 if (min(this_ic) < 0) and (0 < max(this_ic)) else
+             min(this_ic) if min(this_ic) > 0 else
+             max(this_ic) if max(this_ic) < 0 else
+             np.nan
+             for this_ic in tic]
+        )
+
+        if np.any(np.isnan(tdif_minus_ic)):
+            raise Exception  # TODO: make nice Exception
+
+        fig, ax = plt.subplots()
+        ax.hist(tdif_minus_ic, bins=50)
+        ax.plot([], [], ' ',
+                label=f'{len(tdif_minus_ic[tdif_minus_ic == 0]) * 100 / len(tdif_minus_ic):.2f}% contained in IC90')
+        ax.set_ylabel('a.u.')
+        ax.set_xlabel(r'deviation to IC$_{90}$')
+        ax.set_title(f'{self.dhandler.name}\n{self.rhandler.method}')
+        ax.legend()
+
+        fname = f'{self.dir}/deviation_ic.pdf'
+        logger.debug(f'saving figure under {fname}')
+
+        plt.savefig(fname)
+        plt.close()
+
+    def plot_lcs_where_fit_fails(self, dt=5, n=10, **kwargs):
 
         # dt_indices = np.where(abs(self.rhandler.t_exp_dif[self.dhandler.selected_indices]) >= dt)[0]
         dt_indices = np.array(self.dhandler.selected_indices)[
@@ -130,9 +168,9 @@ class Plotter:
 
         for indice in dt_indices[:n]:
             logger.debug(f'plotting lightcurve with indice {indice}')
-            self.plot_lc(indice, f'{self.lc_dir}/bad_lcs')  # TODO: INDICES!
+            self.plot_lc(indice, f'{self.lc_dir}/bad_lcs', **kwargs)  # TODO: INDICES!
 
-    def plot_lc(self, indice, plot_in_dir='default', **kwargs):
+    def plot_lc(self, indice, plot_in_dir='default', band=None, **kwargs):
 
         if plot_in_dir == 'default':
             plot_in_dir = self.lc_dir
@@ -164,17 +202,32 @@ class Plotter:
 
             t_exp_true = collected_data['t_exp_true']
             t_exp_fit = collected_data['t_exp_fit']
-            t_exp_fit_error = collected_data['t_exp_dif_error']
-            tdif = t_exp_fit - t_exp_true
+            # t_exp_fit_error = collected_data['t_exp_dif_error']
+            t_exp_ic = collected_data['t_exp_dif_0.9']
+            tdif = collected_data['t_exp_dif']
 
             ax.plot([], [], ' ', label=r'$t_{dif} = $' + '{:.1f}'.format(tdif))
             ax.axvline(t_exp_true, color='red', linestyle='--', label='true $t_{exp}$')
             ax.axvline(t_exp_fit, color='red', label='fitted $t_{exp}$')
-            ax.fill_between(np.array([-t_exp_fit_error / 2, t_exp_fit_error / 2]) + t_exp_fit,
-                            y1=30, color='red', alpha=0.2)
+            # ax.fill_between(np.array([-t_exp_fit_error / 2, t_exp_fit_error / 2]) + t_exp_fit,
+                            # y1=30, facecolor='none', edgecolor='red', hatch='X', linewidth=0, alpha=0.2,
+                            # label='gaussian error')
+            ax.fill_between(np.array(t_exp_ic) + t_exp_true,
+                            y1=30, color='red', alpha=0.2, label=r'IC$_{90\%}$')
 
         else:
             logger.info('Data from fits has not been collected! Can\'t draw explosion time estimate ...')
+
+        # texp_from_template, t, f = get_explosion_time(self.dhandler.get_spectral_time_evolution_file(indice),
+        #                                               band=band,
+        #                                               peak_mjd=data['meta']['t_peak'][indice],
+        #                                               redshift=data['meta']['z'][indice],
+        #                                               full_output=True)
+        #
+        # logger.debug(f'length of time is {len(t)}, length of flux is {len(f)}')
+        #
+        # ax.plot(t, f, ls='-.', label='template', color=bandcolors(band))
+        # ax.axvline(texp_from_template, ls='--', color=bandcolors(band))
 
         ax.set_title(original_id)
         ax.set_xlabel('Phase in MJD')
