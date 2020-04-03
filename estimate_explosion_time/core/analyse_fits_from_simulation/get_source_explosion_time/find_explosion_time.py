@@ -70,12 +70,15 @@ def get_explosion_time_from_template(template, band=None, peak_mjd=None, redshif
 
     # construct bandpass
     # Use a completely transparent bandpass if no band is given
-    transmission = [1, 1]
-    if not band:
-        src_wavelength = [source.minwave(), source.maxwave()]
-        src_bandpass = sncosmo.Bandpass(src_wavelength, transmission, name='complete band')
-    else:
-        src_bandpass = sncosmo.get_bandpass(band)
+    # transmission = [1, 1]
+    # if not band:
+    #     src_wavelength = [source.minwave(), source.maxwave()]
+    #     src_bandpass = sncosmo.Bandpass(src_wavelength, transmission, name='complete band')
+    # else:
+    #     src_bandpass = sncosmo.get_bandpass(band)
+
+    # TODO: change to:
+    src_bandpass = bolometric_bandpass(source) if not band else sncosmo.get_bandpass(band)
 
     # set arbitrary amplitude
     amp = 1e-1
@@ -100,11 +103,14 @@ def get_explosion_time_from_template(template, band=None, peak_mjd=None, redshif
     model.set(z=redshift, t0=0)
 
     # as the redshift shifts the spectral range it's necesarry to make a new complete bandpass for the shifted model
-    if not band:
-        mdl_wavelength = [model.minwave(), model.maxwave()]
-        mdl_bandpass = sncosmo.Bandpass(mdl_wavelength, transmission, name='complete band')
-    else:
-        mdl_bandpass = sncosmo.get_bandpass(band)
+    # if not band:
+    #     mdl_wavelength = [model.minwave(), model.maxwave()]
+    #     mdl_bandpass = sncosmo.Bandpass(mdl_wavelength, transmission, name='complete band')
+    # else:
+    #     mdl_bandpass = sncosmo.get_bandpass(band)
+
+    # TODO: change to:
+    mdl_bandpass = bolometric_bandpass(model) if not band else sncosmo.get_bandpass(band)
 
     # get the time array and flux in the observer frame
     redtime = np.linspace(model.mintime(), model.maxtime(), steps)
@@ -129,7 +135,7 @@ def get_explosion_time_from_template(template, band=None, peak_mjd=None, redshif
     logger.debug('exploded {:.2f}d before peak'.format(peak_mjd - t_exp))
 
     if full_output:
-        return t_exp, redtime, redshifted_flux
+        return t_exp, redtime, redshifted_flux, time, flux
     else:
         return t_exp
 
@@ -186,7 +192,21 @@ def get_explosion_time_from_template(template, band=None, peak_mjd=None, redshif
 #
 #     else:
 #         snc_source.set(redshift=redshift)
-        
+
+
+def bolometric_bandpass(sncosmo_source_or_model):
+    """
+    create a sncosmo.Bandpass instance that has transmission of 1
+    for the whole spectral range od the model or the source given
+    :param sncosmo_source_or_model:
+    :return:
+    """
+
+    transmission = [1, 1]
+    src_wavelength = [sncosmo_source_or_model.minwave(), sncosmo_source_or_model.maxwave()]
+    src_bandpass = sncosmo.Bandpass(src_wavelength, transmission, name='complete band')
+    return src_bandpass
+
 
 def sncosmo_source(source_path):
     """
