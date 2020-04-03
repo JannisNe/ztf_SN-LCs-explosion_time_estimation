@@ -9,14 +9,15 @@ from estimate_explosion_time.shared import simulation_dir, all_methods, es_scrat
 from estimate_explosion_time.core.data_prep.data import DataHandler
 from estimate_explosion_time.core.fit_data.fitlauncher.fitlauncher import Fitter
 from estimate_explosion_time.cluster import n_tasks
+from estimate_explosion_time.analyses.dummy import DummyDH
 
 
 methods = ['mosfit']
-simulation_name = 'dummy'
+# simulation_name = 'dummy'
+#
+# simsurvey_path = f'{es_scratch_dir}/../dummy.pkl'
 
-simsurvey_path = f'{es_scratch_dir}/../dummy.pkl'
-
-simsurveyDH = DataHandler.get_dhandler(simulation_name, simsurvey_path)
+simsurveyDH = DummyDH.get_dhandler()
 
 logger.debug(
     f'Name: {simsurveyDH.name} \n'
