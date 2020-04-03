@@ -20,7 +20,7 @@ class SimsurveyDH(DataHandler):
 
     def __init__(self):
         input('I\'m about to create a new DataHandler for the Simsurvey simulations. Continue? ')
-        DataHandler.__init__(self, path=simsurvey_path, name=SimsurveyDH.name, simulation=False)
+        DataHandler.__init__(self, path=simsurvey_path, name=SimsurveyDH.name)
 
     def get_spectral_time_evolution_file(self, ind):
         return 'nugent-sn1bc'

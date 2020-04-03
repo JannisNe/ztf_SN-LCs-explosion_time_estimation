@@ -12,7 +12,7 @@ from estimate_explosion_time.cluster import n_tasks
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-f', '--force', type=bool)
+parser.add_argument('-r', '--force_results', type=bool)
 args=parser.parse_args()
 
 methods = ['mosfit']
@@ -41,4 +41,4 @@ simsurveyDH.select_and_adjust_selection_string()
 
 for method in methods:
 
-    simsurveyDH.results(method, force=args.force)
+    simsurveyDH.results(method, force=args.force_results)

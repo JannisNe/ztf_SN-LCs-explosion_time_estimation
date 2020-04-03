@@ -2,16 +2,17 @@ from estimate_explosion_time.shared import get_custom_logger, main_logger_name, 
 import logging
 
 logger = get_custom_logger(main_logger_name)
-logger.setLevel(logging.DEBUG)
+logger_level = logging.DEBUG
+logger.setLevel(logger_level)
 logger.debug('logging level is DEBUG')
-
 
 from estimate_explosion_time.analyses.simsurvey_simulations import SimsurveyDH
 from estimate_explosion_time.core.analyse_fits_from_simulation.get_source_explosion_time.find_explosion_time import \
-    get_explosion_time, ExplosionTimeError
+    get_explosion_time, ExplosionTimeError, bolometric_bandpass
 import pickle
 import os
 import numpy as np
+import sncosmo
 from tqdm import tqdm
 from matplotlib import pyplot as plt
 import multiprocessing
@@ -28,6 +29,7 @@ if not os.path.exists(raw):
 
 storage_file = f'{storage_dir}/test_explosion_time_estimation_from_template.npy'
 cl = 0.9
+time_steps = 5000
 
 # load the data handler
 dh = SimsurveyDH.get_dhandler()
@@ -55,20 +57,31 @@ def multiprocess_function(i):
     logger.debug(f'{i}/{dh.nlcs - 1}')
     lc = lcs[i]
     max_ind = np.argmax(lc['flux'])
-    peak_mjd = lc['time'][max_ind]
     peak_band = lc['band'][max_ind]
+
+    model = sncosmo.Model('nugent-sn1bc')
+    model.set(z=meta_data['z'][i], amplitude=1e-11, t0=meta_data['t0'][i])
+    time = np.linspace(model.mintime(), model.maxtime(), time_steps)
+
+    bandpass_band = sncosmo.get_bandpass(peak_band)
+    bandflux_band = model.bandflux(bandpass_band, time)
+    peak_mjd_band = time[np.argmax(bandflux_band)]
+
+    bandpass_bol = bolometric_bandpass(model)
+    bandflux_bol = model.bandflux(bandpass_bol, time)
+    peak_mjd_bol = time[np.argmax(bandflux_bol)]
 
     estimated_explosion_time = get_explosion_time(
         'nugent-sn1bc',
         redshift=meta_data['z'][i],
-        peak_mjd=peak_mjd,
+        peak_mjd=peak_mjd_bol,
         band=None
     )
 
     estimated_explosion_time_with_band = get_explosion_time(
         'nugent-sn1bc',
         redshift=meta_data['z'][i],
-        peak_mjd=peak_mjd,
+        peak_mjd=peak_mjd_band,
         band=peak_band
     )
 
@@ -82,7 +95,17 @@ if args.force or not os.path.isfile(storage_file):
     logger.debug('starting multiprocessing')
 
     with multiprocessing.Pool(30) as p:
-        estimated_explosion_times = p.map(multiprocess_function, itr)
+
+        if logger.getEffectiveLevel() != logging.INFO:
+            estimated_explosion_times = p.map(multiprocess_function, itr)
+
+        else:
+            estimated_explosion_times = list()
+            pbar_length = len(itr)
+            with tqdm(total=pbar_length, desc='calculating explosion times') as pbar:
+                for i, _ in enumerate(p.imap_unordered(multiprocess_function,itr)):
+                    estimated_explosion_times.append(_)
+                    pbar.update()
 
     estimated_explosion_times = np.array(estimated_explosion_times,
                                          dtype={'names': ['indice', 'without_band', 'with_band'],
@@ -110,7 +133,7 @@ for bandstr in ['with_band', 'without_band']:
     logger.debug('calculating difference between estimated and true explosion time')
 
     # calculate the error in the estimation
-    explosion_time_dif[bandstr] -= meta_data['t0']
+    explosion_time_dif[bandstr][np.argsort(explosion_time_dif['indice'])] -= meta_data['t0']
 
     # plot the distribution of the error
 
@@ -121,14 +144,14 @@ for bandstr in ['with_band', 'without_band']:
 
     fig, ax = plt.subplots()
 
-    ax.hist(arr, bins=50)
+    ax.hist(arr)
     ax.axvline(ic_lower, color='orange' ,ls='--', label=fr'IC$_{ {cl} }$ = [{ic_lower:.1f}, {ic_upper:.1f}]')
     ax.axvline(ic_upper, color='orange', ls='--')
     ax.axvline(tmean, color='orange', label=f'median = {tmean:.3f}')
 
     ax.legend()
 
-    ax.set_xlabel(r'$\Delta t_{\mathrm{explosion}}$')
+    ax.set_xlabel(r'$\Delta t_{\mathrm{explosion}}$ [d]')
     ax.set_title(r'$\Delta t_{\mathrm{explosion}}$ ' + f'{bandstr.strip("_band")} provinding peak band')
     plt.tight_layout()
     fname = f'{this_dir}/estimation_error_distribution.pdf'
@@ -147,13 +170,21 @@ for bandstr in ['with_band', 'without_band']:
 
         prev_texp = estimated_explosion_times[bandstr][estimated_explosion_times['indice'] == i]
 
-
         lc = lcs[i]
         max_ind = np.argmax(lc['flux'])
         peak_band = lc['band'][max_ind]
         band = None if 'without' in bandstr else peak_band
         peak_mjd = lc['time'][max_ind]
         plot_lc = lc if 'without' in bandstr else lc[lc['band'] == peak_band]
+
+        # find true peak time
+        model = sncosmo.Model('nugent-sn1bc')
+        model.set(z=meta_data['z'][i], amplitude=1e-11, t0=meta_data['t0'][i])
+        bandpass = bolometric_bandpass(model) if not band else sncosmo.get_bandpass(band)
+        time = np.linspace(model.mintime(), model.maxtime(), time_steps)
+        error = (max(time) - min(time))/time_steps
+        bandflux = model.bandflux(bandpass, time)
+        peak_mjd = time[np.argmax(bandflux)]
 
         texp_from_template, t, f = get_explosion_time('nugent-sn1bc',
                                                       band=band,
@@ -163,6 +194,11 @@ for bandstr in ['with_band', 'without_band']:
 
         if texp_from_template-prev_texp != 0:
             raise ExplosionTimeError('got different result this time!')
+
+        # logger.debug(f'\ntexp_true = {float(meta_data["t0"][i]):.1f}'
+        #              f'\ntexp_prev = {float(prev_texp):.1f}'
+        #              f'\ntexp_from_template = {float(texp_from_template):.1f}'
+        #              f'\ntdif = {float(explosion_time_dif[bandstr][explosion_time_dif["indice"] == i]):.2f}')
 
         fig, ax = plt.subplots()
         color = bandcolors(band)
@@ -176,6 +212,12 @@ for bandstr in ['with_band', 'without_band']:
 
         ax.axvline(meta_data['t0'][i], ls='--', color=color, label=r'$t_{exp,true}$')
         ax.axvline(texp_from_template, ls=':', color=color, label=r'$t_{exp,from template}$')
+        ax.axvline(prev_texp, ls='', color=color,
+                   label=r'$t_{dif} = $' +
+                         f'{texp_from_template - meta_data["t0"][i]:.1f}' +
+                         r' $\pm$ ' +
+                         f'{error:.2f}'
+                   )
 
         ax.set_xlabel('phase in days')
         ax.set_ylabel('flux')
