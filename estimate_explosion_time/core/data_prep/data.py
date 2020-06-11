@@ -4,18 +4,20 @@ from shutil import copytree, copy2
 import logging
 import pickle
 from astropy.table import Table
+import astropy
 from astropy.io import ascii
 import astropy.cosmology as cosmo
 import numpy as np
 import multiprocessing
 from tqdm import tqdm
+import sncosmo
 from estimate_explosion_time.shared import simulation_dir, real_data_dir, dh_dir,\
     get_custom_logger, main_logger_name, es_scratch_dir, TqdmToLogger
 from estimate_explosion_time.core.analyse_fits_from_simulation.results import SNCosmoResultHandler, \
     MosfitResultHandler, ResultError
 from estimate_explosion_time.core.analyse_fits_from_simulation.plots import Plotter
 from estimate_explosion_time.core.analyse_fits_from_simulation.get_source_explosion_time.find_explosion_time \
-    import get_explosion_time
+    import get_explosion_time, ExplosionTimeError
 from estimate_explosion_time.core.fit_data.fitlauncher.fitlauncher import FitterError
 
 
@@ -29,8 +31,6 @@ class DataHandler:
 
         self.name = name
         self.orig_path = path
-        # self.zp = zp
-        # self.zpsys = zpsys
         self.data = None
         self.nlcs = None
         self.pickle_dir = None
@@ -87,8 +87,6 @@ class DataHandler:
 
             elif os.path.isdir(path):
                 raise NotImplementedError
-                # logger.info(f'copying data from {path} to {self.dir}')
-                # copytree(path, self.dir)
 
             else:
                 raise DataImportError(
@@ -116,31 +114,9 @@ class DataHandler:
         logger.info(f'{self.nlcs} lightcurves found in data')
         self.save_me()
 
-        # if simulation:
-        #
-        #     logger.debug('checking for true explosion times in data')
-        #
-        #     with open(self.get_data('sncosmo'), 'rb') as f:
-        #         sndata = pickle.load(f, encoding='latin1')
-        #
-        #     if None in sndata['meta']['t0']:
-        #         self.get_explosion_time_from_template(**explosion_time_kwargs)
-
     def write_pkl_to_csv(self):
 
         logger.info('converting .pkl to .csv\'s')
-
-        add_columns = {
-            'instrument': 'ZTF_camera',
-            'telescope': 'ZTF',
-            'name': 'arb',
-            'reference': 'JannisNecker',
-            'u_time': 'MJD',
-            'redshift': 'arb',
-            'ebv': 'arb',
-            'lumdist': 'arb',
-            'ID': 'arb'
-        }
 
         with open(self._sncosmo_data_, 'rb') as fin:
 
@@ -149,8 +125,8 @@ class DataHandler:
             meta = data['meta']
             self.nlcs = len(lcs)
 
-        if not 'lumdist' not in meta:
-            logging.warning('Luminosity distance not given! Calculating it using Planck15.')
+        if 'lumdist' not in meta:
+            logger.warning('Luminosity distance not given! Calculating it using Planck15.')
 
         if not os.path.exists(self._mosfit_data_):
             logger.info(f'making directory {self._mosfit_data_}')
@@ -160,47 +136,31 @@ class DataHandler:
             raise DataImportError('Folder with CSV files already exists!')
 
         itr = range(len(lcs))
+
+        add_columns = {
+            'instrument': 'ZTF_camera',
+            'telescope': 'ZTF',
+            'name': [f'{ind}' for ind in itr],
+            'reference': 'JannisNecker',
+            'u_time': 'MJD',
+            'redshift':[meta['z'][ind] if 'z' in meta else None for ind in itr],
+            'ebv': [meta['hostebv'][ind] if 'hostebv' in meta else None for ind in itr],
+            'lumdist': [meta['lumdist'][ind] if 'lumdist' in meta else \
+                        cosmo.Planck15.luminosity_distance(meta['z'][ind]) if 'z' in meta else \
+                        None for ind in itr],
+            'ID': [meta['idx_orig'][ind] if 'idx_orig' in meta else None for ind in itr]
+        }
+
         for ind in itr if logger.getEffectiveLevel() > logging.INFO else tqdm(itr, desc='writing to csv'):
 
             lc = Table(lcs[ind])
             lc['band'][lc['band'] == 'desi'] = 'ztfi'
             fname = f'{self._mosfit_data_}/{ind}.csv'
 
-            for col in add_columns:
+            this_add_columns = {key: val if type(val) != list else val[ind]
+                                for key, val in add_columns.items()}
 
-                if col not in lc.keys():
-
-                    lc[col] = [add_columns[col]] * len(lc)
-
-                    if col == 'name':
-                        lc[col] = [f'{ind}'] * len(lc)
-
-                    if col == 'redshift':
-                        lc[col] = [meta['z'][ind] if 'z' in meta else None] * len(lc)
-
-                    if col == 'ebv':
-                        lc[col] = [meta['hostebv'][ind] if 'hostebv' in meta else None] * len(lc)
-
-                    if col == 'ID':
-                        try:
-                            lc[col] = [int(meta['idx_orig'][ind]) if 'idx_orig' in meta else None] * len(lc)
-                        except ValueError:
-                            lc[col] = [meta['idx_orig'][ind] if 'idx_orig' in meta else None] * len(lc)
-
-                    if col == 'lumdist':
-                        lc[col] = [meta['lumdist'][ind] if 'lumdist' in meta else
-                                   cosmo.Planck15.luminosity_distance(meta['z'][ind]) if 'z' in meta else
-                                   None] * len(lc)
-
-                    if col == 'zpsys':
-                        lc[col] = [meta['zpsys'][ind] if 'zpsys' in meta else None] * len(lc)
-
-                else:
-                    logger.warning(f'Column {col} already exists!')
-                    # raise IndexError(f'Column {col} already exists!')
-
-            with open(fname, 'w') as fout:
-                ascii.write(lc, fout)
+            write_to_csv(lc, fname, this_add_columns)
 
     def get_data(self, method):
 
@@ -226,6 +186,54 @@ class DataHandler:
     def get_spectral_time_evolution_file(self, indice):
         """ to be implemented in subclasses """
         raise NotImplementedError
+
+    def get_peak_band(self, ind, meta_data=None):
+
+        logger.debug(f'getting peak band for {ind}')
+
+        if not meta_data:
+            with open(self.get_data('sncosmo'), 'rb') as f:
+                sndata = pickle.load(f, encoding='latin1')
+
+            meta_data = sndata['meta']
+
+        peak_mags = np.array([
+            (f'peak_mag_{b}', meta_data[f'peak_mag_{b}'][ind] if f'peak_mag_{b}' in meta_data else None)
+            for b in {'r', 'g'}
+        ], dtype={'names': ['band', 'peak_mag'], 'formats': ['<U15', '<f8']})
+
+        logger.debug(f'peak mags: {peak_mags}')
+
+        peak_mags_wo_nans = peak_mags[~np.isnan(peak_mags['peak_mag'])]
+
+        logger.debug(f'without np.nan: {peak_mags_wo_nans}')
+
+        peak_band_ind = None if len(peak_mags_wo_nans) == 0 else \
+            0 if len(peak_mags_wo_nans) == 1 else \
+            np.argmin(peak_mags_wo_nans['peak_mag'])
+
+        logger.debug(f'peak band indice: {peak_band_ind}')
+
+        peak_band_from_meta = None if peak_band_ind is None else peak_mags_wo_nans['band'][peak_band_ind]
+        peak_mag_from_meta = None if peak_band_ind is None else peak_mags_wo_nans['peak_mag'][peak_band_ind]
+
+        logger.debug(f'peak band is {peak_band_from_meta}: {peak_mag_from_meta} mag')
+
+        # if the peak magnitude is no instrument filter name, assume ZTF filters
+        peak_band_from_meta_old = None
+
+        if 'peak' in peak_band_from_meta and ('r' in peak_band_from_meta or 'g' in peak_band_from_meta):
+            peak_band_from_meta_old = peak_band_from_meta
+            peak_band_from_meta = 'ztfr' if 'r' in peak_band_from_meta_old else \
+                'ztfg' if 'g' in peak_band_from_meta_old else \
+                 None
+
+        if not peak_band_from_meta and peak_band_from_meta_old:
+            raise ExplosionTimeError(f'Couldn\'t determine peak band {peak_band_from_meta_old}!')
+
+        logger.debug(f'peak band is {peak_band_from_meta}')
+
+        return peak_band_from_meta, peak_mag_from_meta
 
     def get_explosion_times_from_template(self, ncpu=10, force_all=False, **kwargs):
         """
@@ -326,9 +334,23 @@ class DataHandler:
         if not explosion_time_kwargs and self.explosion_time_kwargs:
             explosion_time_kwargs = self.explosion_time_kwargs
 
+        peak_band_from_meta, _ = self.get_peak_band(ind, meta_data=meta_data)
+
+        if ('peak_band' in explosion_time_kwargs) and peak_band_from_meta:
+            raise ExplosionTimeError('Found peak band in meta data but a band was also explicitly given for the '
+                                     'explosion time estimation! \n '
+                                     f' explosion_time_kwargs: {explosion_time_kwargs.keys()}')
+
+        peak_band = peak_band_from_meta if 'peak_band' not in explosion_time_kwargs else \
+            explosion_time_kwargs['peak_band']
+
+        if not peak_band:
+            logger.warning(f'No peak band given! Assuming peak date refers to peak in bolometric flux!')
+
         t_exp = get_explosion_time(self.get_spectral_time_evolution_file(ind),
                                    redshift=meta_data['z'][ind],
                                    peak_mjd=meta_data['t_peak'][ind],
+                                   peak_band=peak_band,
                                    **explosion_time_kwargs)
 
         idx_orig = meta_data['idx_orig'][ind]
@@ -443,6 +465,7 @@ class DataHandler:
                req_prepeak=None,
                req_postpeak=None,
                req_max_timedif=None,
+               req_peak_mag=None, use_magnitude_system='AB',
                req_std=None,
                req_texp_dif=None,
                check_band='any',
@@ -465,8 +488,14 @@ class DataHandler:
         with open(self._sncosmo_data_, 'rb') as f:
             data = pickle.load(f, encoding='latin1')
 
+        meta = data['meta']
+        IDs = meta['idx_orig']
+        peak_mags_r = meta.get('peak_mag_r', [])
+        peak_mags_g = meta.get('peak_mag_g', [])
+        lcs = data['lcs']
+
         indices = []
-        IDs = []
+        comply_IDs = []
         cut_IDs = []
 
         for req in [req_prepeak, req_postpeak]:
@@ -476,16 +505,19 @@ class DataHandler:
                 else:
                     raise TypeError('Input type has to be int or dict')
 
-        for req in [req_max_timedif, req_std]:
+        for req in [req_max_timedif, req_std, req_peak_mag]:
             if req is not None:
                 if type(req) in [int, float, dict]:
                     pass
                 else:
                     raise (TypeError('Input type has to be int, float or dict'))
 
-        for j, (lc, ID) in enumerate(zip(data['lcs'], data['meta']['idx_orig'])):
+        for j, lc in enumerate(lcs):
 
             logger.debug('checking indice ' + str(j))
+            ID = IDs[j]
+            peak_mag_r = peak_mags_r[j] if len(peak_mags_r) > 0 else None
+            peak_mag_g = peak_mags_g[j] if len(peak_mags_g) > 0 else None
 
             noise_mask = lc['flux']/lc['fluxerr'] > sigma
             lc = lc[noise_mask]
@@ -499,7 +531,10 @@ class DataHandler:
             comply_prepeak = {}
             comply_postpeak = {}
             comply_max_timedif = {}
+            comply_peak_mag = {}
             comply_std = {}
+
+            comply_dictionaries = [comply_prepeak, comply_postpeak, comply_max_timedif, comply_peak_mag, comply_std]
 
             for i, band in enumerate(bands):
 
@@ -513,69 +548,83 @@ class DataHandler:
                 peak_phase = lc_masked['time'][np.argmax(lc_masked['flux'])]
 
                 # check for compliance with required pre peak epochs
-                npre_peak = len(lc_masked[lc_masked['time'] < peak_phase])
-                if req_prepeak is not None and type(req_prepeak) == dict and band in req_prepeak.keys():
-                    comply_prepeak[band] = npre_peak >= req_prepeak[band]
-                elif req_prepeak is not None and type(req_prepeak) == int:
-                    comply_prepeak[band] = npre_peak >= req_prepeak
-                else:
-                    comply_prepeak[band] = True
+                if req_prepeak:
+                    npre_peak = len(lc_masked[lc_masked['time'] < peak_phase])
+                    logger.debug(f'{npre_peak} pre peak detections')
+                    if type(req_prepeak) == dict and band in req_prepeak.keys():
+                        comply_prepeak[band] = npre_peak >= req_prepeak[band]
+                    elif type(req_prepeak) == int:
+                        comply_prepeak[band] = npre_peak >= req_prepeak
 
                 # check for compliance with required post peak epochs
-                npost_peak = len(lc_masked[lc_masked['time'] > peak_phase])
-                if req_postpeak is not None and type(req_postpeak) == dict and band in req_postpeak.keys():
-                    comply_postpeak[band] = npost_peak >= req_postpeak[band]
-                elif req_postpeak is not None and type(req_postpeak) == int:
-                    comply_postpeak[band] = npost_peak >= req_postpeak
-                else:
-                    comply_postpeak[band] = True
+                if req_postpeak:
+                    npost_peak = len(lc_masked[lc_masked['time'] > peak_phase])
+                    logger.debug(f'{npost_peak} post peak detections')
+                    if type(req_postpeak) == dict and band in req_postpeak.keys():
+                        comply_postpeak[band] = npost_peak >= req_postpeak[band]
+                    elif type(req_postpeak) == int:
+                        comply_postpeak[band] = npost_peak >= req_postpeak
 
                 # check for compliance with required maximal time difference
-                timedif = [lc_masked['time'][j + 1] - lc_masked['time'][j] for j in range(nepochs - 1)]
-                if req_max_timedif is not None and len(timedif) != 0:
-                    max_timedif = max(timedif)
-                    if type(req_max_timedif) is dict and band in req_max_timedif.keys():
-                        comply_max_timedif[band] = max_timedif <= req_max_timedif[band]
-                    elif type(req_max_timedif) is int or type(req_max_timedif) is float:
-                        comply_max_timedif[band] = max_timedif <= req_max_timedif
-                else:
-                    comply_max_timedif[band] = True
+                if req_max_timedif:
+                    timedif = [lc_masked['time'][j + 1] - lc_masked['time'][j] for j in range(nepochs - 1)]
+                    if len(timedif) != 0:
+                        max_timedif = max(timedif)
+                        logger.debug(f'{max_timedif} maximal difference between any following epochs')
+                        if type(req_max_timedif) is dict and band in req_max_timedif.keys():
+                            comply_max_timedif[band] = max_timedif <= req_max_timedif[band]
+                        elif type(req_max_timedif) is int or type(req_max_timedif) is float:
+                            comply_max_timedif[band] = max_timedif <= req_max_timedif
+                    else:
+                        logger.warning(f'Length of timedif = 0!')
+
+                # check for compliance with required peak magnitude
+                if req_peak_mag:
+                    logger.debug(f'peak_mag_r: {peak_mag_g}, peak_mag_g: {peak_mag_g}')
+                    if not peak_mag_g and not peak_mag_r:
+                        raise SelectionError(f'No peak magnitude given! Can\'t do magnitude selection!')
+                    peak_mag = min((m for m in [peak_mag_r, peak_mag_g] if m))
+                    logger.debug(f'Peak Magnitude is {peak_mag}.')
+                    if type(req_peak_mag) is dict and band in req_peak_mag.keys():
+                        comply_peak_mag[band] = peak_mag <= req_peak_mag[band]
+                    else:
+                        comply_peak_mag[band] = peak_mag <= req_peak_mag
 
                 # check for compliance with required custom standard deviation / variance
-                med_flux = np.median(lc_masked['flux'])
-                std = np.median((np.array(lc_masked['flux']) - med_flux) ** 2 / np.array(lc_masked['fluxerr'] ** 2))
                 if req_std is not None:
+                    med_flux = np.median(lc_masked['flux'])
+                    std = np.median((np.array(lc_masked['flux']) - med_flux) ** 2 / np.array(lc_masked['fluxerr'] ** 2))
+                    logger.debug(f'{std} spread')
                     if type(req_std) is dict and band in req_std.keys():
                         comply_std[band] = std >= req_std[band]
                     elif type(req_std) is int or type(req_std) is float:
                         comply_std[band] = std >= req_std
-                else:
-                    comply_std[band] = True
 
-            crit_str = np.array(['prepeak', 'postpeak', 'max timedif', 'std'])
+            crit_str = np.array(['prepeak', 'postpeak', 'max timedif', 'peak mag', 'std'])
+            comply_lists = [list(dictionary.values()) for dictionary in comply_dictionaries]
 
             if check_band == 'any':
-                if np.any(list(comply_prepeak.values())) & np.any(list(comply_postpeak.values())) & \
-                        np.any(list(comply_max_timedif.values())) & np.any(list(comply_std.values())):
-                    IDs.append(ID)
+                bool_list = [np.any(l) if len(l) > 0 else True for l in comply_lists]
+                if np.all(bool_list):
+                    logger.debug('all good')
+                    comply_IDs.append(ID)
                     indices.append(j)
                 else:
-                    fail_str = str(crit_str[np.invert([
-                        np.any(list(comply_prepeak.values())), np.any(list(comply_postpeak.values())),
-                        np.any(list(comply_max_timedif.values())), np.any(list(comply_std.values()))])])
+                    fail_str = str(crit_str[np.invert(bool_list)])
                     logger.debug('failed because ' + fail_str)
                     cut_IDs.append(ID)
+
             elif check_band == 'all':
-                if np.all(list(comply_prepeak.values())) & np.all(list(comply_postpeak.values())) & \
-                        np.all(list(comply_max_timedif.values())) & np.all(list(comply_std.values())):
-                    IDs.append(ID)
+                bool_list = [np.all(l) if len(l) > 0 else True for l in comply_lists]
+                if np.all(bool_list):
+                    logger.debug('all good')
+                    comply_IDs.append(ID)
                     indices.append(j)
                 else:
-                    fail_str = str(crit_str[np.invert([
-                        np.all(list(comply_prepeak.values())), np.all(list(comply_postpeak.values())),
-                        np.all(list(comply_max_timedif.values())), np.all(list(comply_std.values()))])])
+                    fail_str = str(crit_str[np.invert(bool_list)])
                     logger.debug('failed because ' + fail_str)
                     cut_IDs.append(ID)
+
             else:
                 raise TypeError(f'Input {check_band} for check_band not understood!')
 
@@ -593,7 +642,7 @@ class DataHandler:
 
             indices = []
             for indice in self.selected_indices:
-                logger.debug('checking indice ' +str(indice))
+                logger.debug('checking indice ' + str(indice))
                 if error[indice] <= val:
                     indices.append(indice)
                 else:
@@ -636,6 +685,48 @@ class DataHandler:
         return f'{dh_dir}/{name}.pkl'
 
 
+def write_to_csv(lc, filename, add_columns=dict()):
+
+    if type(lc) != astropy.table.table.Table:
+        lc = Table(lc)
+
+    for col, val in add_columns.items():
+
+        if col not in lc.keys():
+
+            lc[col] = [add_columns[col]] * len(lc)
+
+            # if col == 'name':
+            #     lc[col] = [f'{ind}'] * len(lc)
+            #
+            # if col == 'redshift':
+            #     lc[col] = [meta['z'][ind] if 'z' in meta else None] * len(lc)
+            #
+            # if col == 'ebv':
+            #     lc[col] = [meta['hostebv'][ind] if 'hostebv' in meta else None] * len(lc)
+            #
+            # if col == 'ID':
+            #     try:
+            #         lc[col] = [int(meta['idx_orig'][ind]) if 'idx_orig' in meta else None] * len(lc)
+            #     except ValueError:
+            #         lc[col] = [meta['idx_orig'][ind] if 'idx_orig' in meta else None] * len(lc)
+            #
+            # if col == 'lumdist':
+            #     lc[col] = [meta['lumdist'][ind] if 'lumdist' in meta else
+            #                cosmo.Planck15.luminosity_distance(meta['z'][ind]) if 'z' in meta else
+            #                None] * len(lc)
+            #
+            # if col == 'zpsys':
+            #     lc[col] = [meta['zpsys'][ind] if 'zpsys' in meta else None] * len(lc)
+
+        else:
+            logger.warning(f'Column {col} already exists!')
+            # raise IndexError(f'Column {col} already exists!')
+
+    with open(filename, 'w') as fout:
+        ascii.write(lc, fout)
+
+
 class DataImportWarning(UserWarning):
     def __init__(self, msg):
         self.msg = msg
@@ -647,5 +738,10 @@ class DataImportError(Exception):
 
 
 class DataInconsistencyError(Exception):
+    def __init__(self, msg):
+        self.msg = msg
+
+
+class SelectionError(Exception):
     def __init__(self, msg):
         self.msg = msg
