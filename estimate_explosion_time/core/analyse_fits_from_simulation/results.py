@@ -33,6 +33,7 @@ class ResultHandler:
         self.t_exp_dif = None
         self.t_exp_dif_error = None
         self.t_exp_ic = None
+        self.tdif_minus_ic = None
         self.job_id = job_id
 
     def save_data(self):
@@ -42,8 +43,8 @@ class ResultHandler:
 
     def get_t_exp_dif_distribution(self):
 
-        # check the first entry in collected data for t_exp_dif to check if it has been calculated
-        if 't_exp_dif' not in self.collected_data[0].keys():
+        # check the first entry in collected data that is not None for t_exp_dif to check if it has been calculated
+        if 't_exp_dif' not in self.collected_data[self.collected_data != None][0].keys():
             raise ResultError('fitted explosion time is missing!')
 
         logger.debug('getting distribution of the difference between true and fitted explosion time')
@@ -56,18 +57,29 @@ class ResultHandler:
                                          if data is not None else np.nan
                                          for data in self.collected_data])
 
-        self.t_exp_ic = np.array([data['t_exp_dif_0.9'] if data is not None else
+        self.t_exp_ic = np.array([(min((data['t_exp_dif_0.9'][0], data['t_exp_dif']-1)),
+                                   max((data['t_exp_dif_0.9'][1], data['t_exp_dif']+1)))
+                                  if data is not None else
                                   np.nan
                                   for data in self.collected_data])
 
-        logger.debug(f'lenghth of self.t_exp_ic is {len(self.t_exp_ic)}. First element is {self.t_exp_ic[0]}')
+        self.tdif_minus_ic = np.array(
+                    [(0 if (min(this_ic) < 0) and (0 < max(this_ic)) else
+                     min(this_ic) if min(this_ic) > 0 else
+                     max(this_ic) if max(this_ic) < 0 else
+                     np.nan) if not np.any(np.isnan(this_ic)) else
+                     np.nan
+                     for this_ic in self.t_exp_ic]
+        )
+
+        logger.debug(f'length of self.t_exp_ic is {len(self.t_exp_ic)}. First element is {self.t_exp_ic[0]}')
 
     def collect_results(self, force=False):
 
         if force:
             logger.debug('forcing to collect data')
 
-        if not self.collected_data or force:
+        if isinstance(self.collected_data, type(None)) or force:
 
             if self.job_id:
                 job_status = wait_for_cluster(self.job_id)
@@ -83,7 +95,7 @@ class ResultHandler:
 
                 self.job_id = None
 
-                if len(os.listdir(self.pickle_dir)) is not 0:
+                if len(os.listdir(self.pickle_dir)) != 0:
 
                     listed_pickle_dir = os.listdir(self.pickle_dir)
 
@@ -167,7 +179,7 @@ class SNCosmoResultHandler(ResultHandler):
                 dat = pickle.load(f)
 
             t_exp_true = np.unique(dat['t_exp_true'])
-            if len(t_exp_true) is not 1:
+            if len(t_exp_true) != 1:
                 raise ResultError(f'different explosion times for the same lightcurve')
             else:
                 t_exp_true = t_exp_true[0]
@@ -279,21 +291,6 @@ class MosfitResultHandler(ResultHandler):
             indice = int(name)  # TODO: change this to int(name)-1 for future imports
             model = dat['models'][0]
 
-            # posterior_t_exp = []
-            # for rs in model['realizations']:
-            #     rspars = rs['parameters']
-            #     posterior_t_exp.append(rspars['texplosion']['value'] + rspars['reference_texplosion']['value'])
-            #
-            # data[ind] = {
-            #     't_exp_posterior': posterior_t_exp,
-            #     't_exp_fit': np.median(posterior_t_exp),
-            #     't_exp_true': t_exp_true[indice],
-            #     't_exp_dif': np.median(posterior_t_exp) - t_exp_true[indice],
-            #     't_exp_dif_error': np.std(posterior_t_exp),
-            #     't_exp_dif_0.9': np.quantile(posterior_t_exp, [0.05, 0.95]),
-            #     't_exp_dif_0.5': np.quantile(posterior_t_exp, [0.25, 0.75])
-            # }
-
             posterior_t_exp = model['realizations'][0]['parameters']
             texp_fit = float(posterior_t_exp['reference_texplosion']) + float(posterior_t_exp['texplosion']['median'])
 
@@ -310,7 +307,7 @@ class MosfitResultHandler(ResultHandler):
                 't_exp_dif_error': max(ic90) - min(ic90)
             }
 
-        self.collected_data = data
+        self.collected_data = np.array(data)
 
 
 class ResultError(Exception):
