@@ -11,13 +11,11 @@ from estimate_explosion_time.analyses.rappid_simulations.convert_to_pickle_files
 
 logger = get_custom_logger(__name__)
 logger.setLevel(logging.getLogger(main_logger_name).getEffectiveLevel())
-# tqdm_deb = TqdmToLogger(logger, level=logging.DEBUG)
-# tqdm_info = TqdmToLogger(logger, level=logging.INFO)
 
 
 class rappidDH(DataHandler):
 
-    def __init__(self, generated_with, sed_directory):
+    def __init__(self, generated_with, sed_directory, peak_mag=None):
 
         if 'mosfit' in generated_with:
             self.number = '13'
@@ -27,8 +25,10 @@ class rappidDH(DataHandler):
             self.number = None
             DataImportError(f'Input {generated_with} for generated_with not understood')
 
-        dh_name = 'rappid_sim_model' + self.number
-        path = rappid_pkl_name(self.number)
+        dh_name = f'rappid_sim_model{self.number}_peakmag{peak_mag}' if peak_mag \
+            else f'rappid_sim_model{self.number}'
+
+        path = rappid_pkl_name(self.number, peak_mag)
 
         DataHandler.__init__(self, path, dh_name)
 
@@ -74,7 +74,7 @@ class rappidDH(DataHandler):
 
 
     @staticmethod
-    def get_dhandler(generated_with, **kwargs):
+    def get_dhandler(generated_with, peak_mag=19, **kwargs):
 
         if 'mosfit' in generated_with:
             number = '13'
@@ -84,7 +84,11 @@ class rappidDH(DataHandler):
             number = None
             DataImportError(f'Input {generated_with} for generated_with not understood')
 
-        dh_name = 'rappid_sim_model' + number
+        dh_name = f'rappid_sim_model{number}_peakmag{peak_mag}' if peak_mag \
+            else f'rappid_sim_model{number}'
+
+        logger.debug(f'dh name = {dh_name}')
+
         path = f'/afs/ifh.de/user/n/neckerja/scratch/ZTF_20190512/ZTF_MSIP_MODEL{number}.pkl'
 
         if os.path.isfile(DataHandler.dh_path(dh_name)):
@@ -93,7 +97,7 @@ class rappidDH(DataHandler):
 
         elif os.path.exists(path):
             logger.info(f'creating rappidDataHandler for {dh_name}')
-            return rappidDH(generated_with, **kwargs)
+            return rappidDH(generated_with=generated_with, peak_mag=peak_mag, **kwargs)
 
         else:
             raise DataImportError(f'ResultHandler for {dh_name} doesn\'t exist. '
