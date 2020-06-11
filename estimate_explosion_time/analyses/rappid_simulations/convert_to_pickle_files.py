@@ -16,10 +16,15 @@ tqdm_info = TqdmToLogger(logger, level=logging.INFO)
 rappid_original_data = '/afs/ifh.de/group/amanda/scratch/neckerja/ZTF_20190512'
 
 
-def rappid_pkl_name(model_number):
-    return rappid_original_data + '/ZTF_MSIP_MODEL{0}.pkl'.format(
-        model_number if type(model_number) is str else '{:02d}'.format(model_number)
-    )
+def rappid_pkl_name(model_number, peak_mag=None):
+    base_name = rappid_original_data + '/ZTF_MSIP_MODEL'
+
+    name = f'{base_name}{model_number}' if type(model_number) is str else f'{base_name}{model_number:02d}'
+    if peak_mag:
+        name += f'_peakmag{peak_mag}'
+    name += '.pkl'
+
+    return name
 
 
 def getfn(typ, model, inds=range(40)):
@@ -34,9 +39,9 @@ def getfn(typ, model, inds=range(40)):
     return fns
 
 
-def write_model_to_pickle(model_number):
+def write_model_to_pickle(model_number, peak_mag=None):
 
-    logger.info('writing model file for model {:02d} to pickle'.format(model_number))
+    logger.info(f'writing model file for model {model_number:02d} to pickle. Peak Mag is {peak_mag}')
 
     hfiles = getfn('HEAD', model_number)
     pfiles = getfn('PHOT', model_number)
@@ -46,19 +51,36 @@ def write_model_to_pickle(model_number):
     sim = {'meta':
                {'t0': [],
                 'z': [],
+                'photo_z': [],
+                'photo_z_err': [],
+                'peak_mag_r': [],
+                'peak_mag_g': [],
                 'idx_orig': [],
                 'lumdist': [],
                 'hostebv': [],
                 'model': [],
-                'model_type':[],
+                'model_type': [],
                 't_peak': []},
            'lcs': []}
     for head, lc in tqdm.tqdm(list(zip(heads, lcs)), desc='format lightcurves',
                               leave=False, file=tqdm_info, mininterval=5):
 
+        peak_mag_r, peak_mag_g = head[3], head[2]
+
+        if peak_mag:
+            if min((peak_mag_g, peak_mag_r)) > peak_mag:
+                continue
+
         sim['meta']['t0'].append(None)
         sim['meta']['t_peak'].append(head[6])
+
         sim['meta']['z'].append(head[4])
+        sim['meta']['photo_z'].append(head[11])
+        sim['meta']['photo_z_err'].append(head[12])
+
+        sim['meta']['peak_mag_r'].append(head[3])
+        sim['meta']['peak_mag_g'].append(head[2])
+
         sim['meta']['idx_orig'].append(int(head[1]))
         sim['meta']['lumdist'].append(head[5])
         sim['meta']['hostebv'].append(head[7])
@@ -72,7 +94,9 @@ def write_model_to_pickle(model_number):
 
         sim['lcs'].append(newlc)
 
-    with open(rappid_pkl_name(model_number), 'wb+') as fout:
+    fname = rappid_pkl_name(model_number, peak_mag)
+    logger.info(f'writing {len(sim["lcs"])} lightcurves to {fname}')
+    with open(fname, 'wb+') as fout:
         pickle.dump(sim, fout)
 
 
