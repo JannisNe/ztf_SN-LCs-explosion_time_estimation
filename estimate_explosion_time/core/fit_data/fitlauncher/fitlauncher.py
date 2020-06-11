@@ -56,7 +56,6 @@ class Fitter:
 
     def fit_lcs(self, dhandler, **kwargs):
 
-
         dh_job_id = None
         if self.method_name in dhandler.rhandlers:
             dh_job_id = dhandler.rhandlers[self.method_name].job_id
@@ -69,10 +68,10 @@ class Fitter:
 
         outdir = self.get_output_directory(dhandler)
 
-        if not 'missing_indice_file' in kwargs.keys() and len(os.listdir(outdir)) > 0:
+        if 'missing_indice_file' not in kwargs.keys() and len(os.listdir(outdir)) > 0:
             # If outdir does contain stuff, clear it. That deletes old fit results, that stay after
             # collect_results in the case of Mosfit
-            inpt = input('I\'m about to delete old result files. should I continue? [y/n] ')
+            inpt = input(f'I\'m about to delete old result files in {outdir}. should I continue? [y/n] ')
             if inpt in ['y', 'yes']:
 
                 itr = os.listdir(outdir)
@@ -160,6 +159,7 @@ class Fitter:
                 os.mkdir(this_dir)
 
         return outdir
+
 
 class FitterError(Exception):
     def __init__(self, msg):
