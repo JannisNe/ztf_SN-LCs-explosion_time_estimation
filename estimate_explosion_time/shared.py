@@ -79,7 +79,7 @@ input_dir = f'{es_scratch_dir}/input'
 cache_dir = f'{storage_dir}/cache'
 pickle_dir = f'{storage_dir}/pickles'
 log_dir = f'{storage_dir}/logs'
-
+test_dir = f'{storage_dir}/test'
 dh_dir = f'{storage_dir}/DataHandler'
 fh_dir = f'{storage_dir}/Fitter'
 
@@ -93,7 +93,7 @@ test_plots_dir = f'{plots_dir}/tests'
 
 
 all_dirs = [output_dir, storage_dir, input_dir,
-            cache_dir, pickle_dir, log_dir,
+            cache_dir, pickle_dir, log_dir, test_dir,
             dh_dir, fh_dir,
             simulation_dir,real_data_dir,
             plots_dir, output_data,
