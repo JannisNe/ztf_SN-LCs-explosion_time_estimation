@@ -16,7 +16,7 @@ desy_submit_file = f'{multiprocess_dir}/submitDESY.sh'
 
 def make_desy_submit_file(method_name, indir, outdir, ntasks, cache,
                           hrss='8G', hcpu='23:59:00', tasks_in_group=100, missing_indice_file=None,
-                          reduce_mosfit_output=True):
+                          reduce_mosfit_output=True, walkers=100):
 
     njobs = int(math.ceil(ntasks / tasks_in_group))
 
@@ -43,8 +43,8 @@ def make_desy_submit_file(method_name, indir, outdir, ntasks, cache,
 
         path_to_environment = mosfit_environment_path
 
-        iterations = 500
-        walkers = 100
+        # iterations = 500
+        # walkers = 100
 
         fill = '    OUTNAME=products/${lcid}.json \n' \
                '    echo "doing mosfit fit" \n' \
