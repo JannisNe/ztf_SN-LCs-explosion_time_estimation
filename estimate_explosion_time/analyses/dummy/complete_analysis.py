@@ -29,7 +29,7 @@ meta = data['meta']
 t0_true_true = np.array(meta['t0_true'])
 t0_true_estimated = np.array(meta['t0'])
 
-med_dif, ic_upper, ic_lower = np.quantile(t0_true_true - t0_true_estimated, [0.5, 0.05, 0.95])
+med_dif, ic_lower, ic_upper = np.quantile(t0_true_true - t0_true_estimated, [0.5, 0.05, 0.95])
 input(f'median(tdif) = {med_dif:.2f} (- {med_dif-ic_lower:.2f} + {ic_upper-med_dif:.2f}). Continue? ')
 
 # fit the lightcurves with the desired method (only 'mosfit' is good!)
