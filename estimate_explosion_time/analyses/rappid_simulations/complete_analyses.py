@@ -11,12 +11,14 @@ from estimate_explosion_time.analyses.rappid_simulations.convert_to_pickle_files
     rappid_pkl_name, write_model_to_pickle, rappid_original_data
 import os
 
+# only include lightcurves with a peak magnitude brighter than this
+peak_mag = 19
 
 # take the original simulated data and convert it into pickles in the right format
 # the path to the original data is to be specified in convert_to_pickle_files.py
 for model_number in [3, 13]:
-    if not os.path.isfile(rappid_pkl_name(model_number)):
-        write_model_to_pickle(model_number)
+    if not os.path.isfile(rappid_pkl_name(model_number, peak_mag)):
+        write_model_to_pickle(model_number, peak_mag)
 
 # sepcify where to look for the SED files that were used in the simulation.
 # That's necesarry for getting the explosion time from the template
@@ -24,13 +26,13 @@ sed_directory = rappid_original_data + '/SEDs'
 
 # get the lightcurves either generated using MOSFiT type 'mosfit'
 # or using specral templates type 'templates'
-generated_with = 'templates'
+generated_with = 'mosfit'
 
 # get the DataHandler object who takes care of all the book keeping
 thisDH = rappidDH.get_dhandler(generated_with, sed_directory=sed_directory)
 
 # get the explosion times for the simulations
-thisDH.get_explosion_times_from_template(ncpu=15)
+thisDH.get_explosion_times_from_template(ncpu=45)
 
 # fit the lightcurves with the desired method (only 'mosfit' is good!)
 method = 'mosfit'
