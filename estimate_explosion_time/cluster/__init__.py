@@ -4,7 +4,7 @@ import subprocess
 import logging
 import numpy as np
 from tqdm import tqdm
-from estimate_explosion_time.cluster.make_cluster_submit_script import make_desy_submit_file
+from estimate_explosion_time.cluster.make_cluster_submit_script import make_desy_submit_file, desy_submit_file
 from estimate_explosion_time.shared import log_dir, cache_dir, get_custom_logger, main_logger_name, TqdmToLogger
 
 
@@ -23,7 +23,7 @@ def submit_to_desy(method_name, simulation_name=None, **kwargs):
     name = f'{method_name}_{simulation_name}'
 
     # remove old logs
-    if not 'missing_indice_file' in kwargs.keys():
+    if 'missing_indice_file' not in kwargs.keys():
         logger.debug('removing old log files')
         for file in tqdm(os.listdir(log_dir), desc='removing old log files', file=tqdm_deb, mininterval=30):
             if name in file:
