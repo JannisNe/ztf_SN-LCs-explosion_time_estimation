@@ -5,6 +5,7 @@ import os
 import logging
 import shutil
 from tqdm import tqdm
+import numpy as np
 import pickle
 
 
@@ -68,18 +69,26 @@ class Fitter:
 
         outdir = self.get_output_directory(dhandler)
 
-        if 'missing_indice_file' not in kwargs.keys() and len(os.listdir(outdir)) > 0:
-            # If outdir does contain stuff, clear it. That deletes old fit results, that stay after
-            # collect_results in the case of Mosfit
-            inpt = input(f'I\'m about to delete old result files in {outdir}. should I continue? [y/n] ')
-            if inpt in ['y', 'yes']:
+        # read missing indice file and see if it's empty
+        missing_indice_file = kwargs.get('missing_indice_file', None)
+        if missing_indice_file:
+            missing_indices = np.loadtxt(missing_indice_file).split('\n')
+            if len(missing_indices) < 1:
+                raise FitterError(f'File {missing_indice_file} is empty!')
 
-                itr = os.listdir(outdir)
-                for file in itr if logger.getEffectiveLevel() > logging.INFO else \
-                        tqdm(itr, desc='clearing fitter output directory'):
-                    os.remove(f'{outdir}/{file}')
-            else:
-                raise FitterError('process terminated')
+        else:
+            if len(os.listdir(outdir)) > 0:
+                # If outdir does contain stuff, clear it. That deletes old fit results, that stay after
+                # collect_results in the case of Mosfit
+                inpt = input(f'I\'m about to delete old result files in {outdir}. should I continue? [y/n] ')
+                if inpt in ['y', 'yes']:
+
+                    itr = os.listdir(outdir)
+                    for file in itr if logger.getEffectiveLevel() > logging.INFO else \
+                            tqdm(itr, desc='clearing fitter output directory'):
+                        os.remove(f'{outdir}/{file}')
+                else:
+                    raise FitterError('process terminated')
 
         self.cache_dir = f'{self.get_cache_root()}/{dhandler.name}'
         self.update_cache_dir()
@@ -100,7 +109,8 @@ class Fitter:
             'ntasks': dhandler.nlcs,
             'tasks_in_group': 1 if 'mosfit' in self.method_name else 50,
             'simulation_name': dhandler.name,
-            'missing_indice_file': None
+            'missing_indice_file': None,
+            'reduce_mosfit_output': True
         }
 
         # if any of the keyword arguments are explicitly given, use these
