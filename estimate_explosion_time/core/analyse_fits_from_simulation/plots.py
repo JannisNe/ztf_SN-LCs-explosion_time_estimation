@@ -208,9 +208,9 @@ class Plotter:
         fig, ax = plt.subplots()
         plt.gca().invert_yaxis()
 
-        # TODO: check indices!!!
         if 'sncosmo' in self.rhandler.method:
-            self.plot_lc_with_sncosmo_fit(indice, ax)
+            raise DeprecationWarning
+            # self.plot_lc_with_sncosmo_fit(indice, ax)
         elif 'mosfit' in self.rhandler.method:
             self.plot_lc_with_mosfit_fit(indice, ax, **kwargs)
         else:
