@@ -1,6 +1,6 @@
 import os
 from warnings import warn
-from shutil import copytree, copy2
+from shutil import copytree, copy2, rmtree
 import logging
 import pickle
 from astropy.table import Table
@@ -60,18 +60,25 @@ class DataHandler:
         if diri not in path:
             newdir1 = diri
 
-            while os.path.isdir(newdir1):
+            if os.path.isdir(newdir1):
+                logger.warning(f'About to overwrite {newdir1}')
+                inp = input('continue? [y/n]')
+                if 'y' not in inp:
+                    raise DataImportError(f'Couldn\'t write to {newdir1}')
+                else:
+                    rmtree(newdir1)
 
-                newdir2 = f'{diri}_{iadd}'
-
-                warn('the directory \n'
-                     f'{newdir1} \n'
-                     f'already exists! Saving data to \n'
-                     f'{newdir2}',
-                     DataImportWarning)
-
-                iadd += 1
-                newdir1 = newdir2
+            # while os.path.isdir(newdir1):
+                # newdir2 = f'{diri}_{iadd}'
+                #
+                # warn('the directory \n'
+                #      f'{newdir1} \n'
+                #      f'already exists! Saving data to \n'
+                #      f'{newdir2}',
+                #      DataImportWarning)
+                #
+                # iadd += 1
+                # newdir1 = newdir2
 
             self.dir = newdir1
 
@@ -146,7 +153,7 @@ class DataHandler:
             'redshift':[meta['z'][ind] if 'z' in meta else None for ind in itr],
             'ebv': [meta['hostebv'][ind] if 'hostebv' in meta else None for ind in itr],
             'lumdist': [meta['lumdist'][ind] if 'lumdist' in meta else \
-                        cosmo.Planck15.luminosity_distance(meta['z'][ind]) if 'z' in meta else \
+                        cosmo.Planck15.luminosity_distance(meta['z'][ind]).value if 'z' in meta else \
                         None for ind in itr],
             'ID': [meta['idx_orig'][ind] if 'idx_orig' in meta else None for ind in itr]
         }
@@ -431,10 +438,11 @@ class DataHandler:
         try:
             rhandler.collect_results(force=force)
             rhandler.get_t_exp_dif_distribution()
-            plotter.hist_t_exp_dif(cl)
-            plotter.hist_ic90_deviaton()
-            plotter.plot_tdif_tdife()
-            plotter.plot_lcs_where_fit_fails(**kwargs)
+            if kwargs.get('make_plots', True):
+                plotter.hist_t_exp_dif(cl)
+                plotter.hist_ic90_deviaton()
+                plotter.plot_tdif_tdife()
+                plotter.plot_lcs_where_fit_fails(**kwargs)
         except KeyboardInterrupt:
             pass
 
