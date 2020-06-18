@@ -9,6 +9,7 @@ from tqdm import tqdm
 from estimate_explosion_time.shared import get_custom_logger, main_logger_name, TqdmToLogger, pickle_dir
 from estimate_explosion_time.cluster import wait_for_cluster
 from estimate_explosion_time.core.fit_data.fitlauncher.fitlauncher import Fitter
+from estimate_explosion_time.core.fit_data.mosfit.reduce_mosfit_result_file import make_reduced_output
 
 
 logger = get_custom_logger(__name__)
@@ -41,7 +42,7 @@ class ResultHandler:
         with open(self.dhandler.collected_data, 'wb') as f:
             pickle.dump(self.collected_data, f)
 
-    def get_t_exp_dif_distribution(self):
+    def get_t_exp_dif_distribution(self, t_exp_dif_floor=None):
 
         # check the first entry in collected data that is not None for t_exp_dif to check if it has been calculated
         if 't_exp_dif' not in self.collected_data[self.collected_data != None][0].keys():
@@ -57,11 +58,18 @@ class ResultHandler:
                                          if data is not None else np.nan
                                          for data in self.collected_data])
 
-        self.t_exp_ic = np.array([(min((data['t_exp_dif_0.9'][0], data['t_exp_dif']-1)),
-                                   max((data['t_exp_dif_0.9'][1], data['t_exp_dif']+1)))
-                                  if data is not None else
-                                  np.nan
-                                  for data in self.collected_data])
+        if not t_exp_dif_floor:
+            self.t_exp_ic = np.array([data['t_exp_dif_0.9']
+                                      if data is not None else
+                                      np.nan
+                                      for data in self.collected_data])
+
+        else:
+            self.t_exp_ic = np.array([(min((data['t_exp_dif_0.9'][0], data['t_exp_dif']-t_exp_dif_floor/2)),
+                                       max((data['t_exp_dif_0.9'][1], data['t_exp_dif']+t_exp_dif_floor/2)))
+                                      if data is not None else
+                                      np.nan
+                                      for data in self.collected_data])
 
         self.tdif_minus_ic = np.array(
                     [(0 if (min(this_ic) < 0) and (0 < max(this_ic)) else
@@ -268,8 +276,7 @@ class MosfitResultHandler(ResultHandler):
         with open(self.dhandler.get_data('sncosmo'), 'rb') as f:
             sim = pickle.load(f, encoding='latin1')
 
-        t_exp_true = sim['meta']['t0']  # TODO: get texp_true!!!
-        # logger.warning('USING T0 AND NOT TEXP!!!')
+        t_exp_true = sim['meta']['t0']
 
         itr = os.listdir(self.pickle_dir)
         for file in itr if logger.getEffectiveLevel() > logging.INFO else tqdm(itr, desc='collecting fit results'):
@@ -287,16 +294,26 @@ class MosfitResultHandler(ResultHandler):
             if 'name' not in dat:
                 dat = dat[list(dat.keys())[0]]
 
+            if 'best_realization' not in dat['models'][0]:
+                logger.debug('reducing data')
+                dat = make_reduced_output(full_file_path)
+
             name = dat['name']
-            indice = int(name)  # TODO: change this to int(name)-1 for future imports
+            indice = int(name)
             model = dat['models'][0]
 
             posterior_t_exp = model['realizations'][0]['parameters']
+
             texp_fit = float(posterior_t_exp['reference_texplosion']) + float(posterior_t_exp['texplosion']['median'])
 
             ic90 = np.array([float(posterior_t_exp['texplosion']['confidence_interval_lower']),
                                            float(posterior_t_exp['texplosion']['confidence_interval_upper'])]) + \
-                   float(posterior_t_exp['reference_texplosion']) - float(t_exp_true[indice])
+                   float(posterior_t_exp['reference_texplosion'])
+
+            if not np.isnan(t_exp_true[indice]):
+                ic90 += -float(t_exp_true[indice])
+
+
 
             data[ind] = {
                 't_exp_posterior': posterior_t_exp,
