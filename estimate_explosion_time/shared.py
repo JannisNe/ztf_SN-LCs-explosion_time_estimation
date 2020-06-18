@@ -126,10 +126,10 @@ all_methods = ['sncosmo_chi2', 'sncosmo_mcmc', 'sncosmo_nester', 'mosfit']
 def bandcolors(band):
 
     color_dict = {
-        'ztfg': 'orange',
-        'ztfr': 'blue',
-        'ztfi': 'green',
-        'desi': 'green'
+        'ztfg': 'g',
+        'ztfr': 'r',
+        'ztfi': 'orange',
+        'desi': 'orange'
     }
 
     if not band:
