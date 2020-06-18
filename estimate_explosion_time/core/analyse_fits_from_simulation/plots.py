@@ -16,6 +16,7 @@ from estimate_explosion_time.shared import plots_dir, get_custom_logger, main_lo
     pickle_dir, bandcolors
 from estimate_explosion_time.core.analyse_fits_from_simulation.get_source_explosion_time.find_explosion_time import \
     get_explosion_time
+from estimate_explosion_time.core.fit_data.mosfit.reduce_mosfit_result_file import make_reduced_output
 
 warnings.simplefilter('ignore', matplotlib.MatplotlibDeprecationWarning)
 
@@ -202,6 +203,7 @@ class Plotter:
             data = pickle.load(f, encoding='latin1')
 
         original_id = data['meta']['idx_orig'][indice]
+        neutrino_time = data['meta']['neutrino_time'][indice] if 'neutrino_time' in data['meta'] else None
 
         logger.debug(f'plotting {original_id}')
 
@@ -224,18 +226,26 @@ class Plotter:
             t_exp_ic = collected_data['t_exp_dif_0.9']
             tdif = collected_data['t_exp_dif']
 
-            ax.plot([], [], ' ', label=r'$t_{dif} = $' + '{:.1f}'.format(tdif))
-            ax.axvline(t_exp_true, color='red', linestyle='--', label='true $t_{exp}$')
-            ax.axvline(t_exp_fit, color='red', label='fitted $t_{exp}$')
-            ax.fill_between(np.array(t_exp_ic) + t_exp_true,
-                            y1=30, color='red', alpha=0.2, label=r'IC$_{90\%}$')
+            ax.axvline(t_exp_fit, color='red', label='fitted $t_{{exp}}=$' + f'{t_exp_fit:.2f}')
+
+            if not np.isnan(t_exp_true):
+                ax.plot([], [], ' ', label=r'$t_{dif} = $' + '{:.1f}'.format(tdif))
+                ax.axvline(t_exp_true, color='red', linestyle='--', label='true $t_{exp}$')
+                ic = np.array(t_exp_ic) + t_exp_true
+            else:
+                ic = t_exp_ic
+            ax.fill_between(ic,
+                            y1=30, color='red', alpha=0.2,
+                            label=r'IC$_{90\%}=$' + f'[{ic[0]:.2f}, {ic[1]:.2f}]')
+
+            if neutrino_time:
+                ax.axvline(neutrino_time, color='gold', linestyle='--', label=r't$_{\nu}$=' + f'{neutrino_time:.2f}')
 
         else:
             logger.info('Data from fits has not been collected! Can\'t draw explosion time estimate ...')
 
-        peak_band, peak_mag = self.dhandler.get_peak_band(indice, meta_data=data['meta'])
-
         if plot_orig_template:
+            peak_band, peak_mag = self.dhandler.get_peak_band(indice, meta_data=data['meta'])
             _ = get_explosion_time(self.dhandler.get_spectral_time_evolution_file(indice),
                                    peak_band=peak_band,
                                    peak_mjd=data['meta']['t_peak'][indice],
@@ -250,8 +260,8 @@ class Plotter:
 
             ax.plot(time, mags, ls='-.', color=bandcolors(peak_band), label=f'original template {peak_band}')
 
-        ax.plot(data['meta']['t_peak'][indice], peak_mag,
-                color=bandcolors(peak_band), marker='x', label=f'peak')
+            ax.plot(data['meta']['t_peak'][indice], peak_mag,
+                    color=bandcolors(peak_band), marker='x', label=f'peak')
 
         ax.set_title(original_id)
         ax.set_xlabel('Phase in MJD')
@@ -259,7 +269,9 @@ class Plotter:
 
         plt.legend()
         plt.tight_layout()
-        plt.savefig(f'{plot_in_dir}/{indice}.pdf')
+        fn = f'{plot_in_dir}/{indice}.pdf'
+        logger.debug(f'saving to {fn}')
+        plt.savefig(fn)
         plt.close()
 
     # def plot_lc_with_sncosmo_fit(self, indice, ax):
@@ -369,19 +381,21 @@ class Plotter:
     #
     #     ax.set_ylim([ylims[0]+2, ylims[1]-3])
 
-    def plot_lc_with_mosfit_fit(self, indice, ax, ylim=[20, 20], plot_corner=False):
+    def plot_lc_with_mosfit_fit(self, indice, ax, ylim=[20, 20], plot_corner=False, **kwargs):
 
         json_name = f'{pickle_dir}/{self.dhandler.name}/mosfit/{indice}.json'
 
-        self.mosfit_plot(file=json_name, ax=ax, ylim=ylim)
+        self.mosfit_plot(file=json_name, ax=ax, ylim=ylim, **kwargs)
 
         if plot_corner:
             cfig = self.plot_corners(json_name)
-            cfig.savefig(f'{self.corner_dir}/{indice}.pdf')
+            cfig_fn = f'{self.corner_dir}/{indice}.pdf'
+            logger.debug(f'saving under {cfig_fn}')
+            cfig.savefig(cfig_fn)
             plt.close(cfig)
 
     @staticmethod
-    def mosfit_plot(file, ax=None, fig=None, ylim=[20, 20]):
+    def mosfit_plot(file, ax=None, fig=None, ylim=[20, 20], reduce_data=False):
 
         if not ax and not fig:
             logger.debug('neither axes nor figure given')
@@ -406,6 +420,9 @@ class Plotter:
                     data = data[list(data.keys())[0]]
         else:
             data = file
+
+        if reduce_data:
+            data = make_reduced_output(data)
 
         photo = data['photometry']
         model = data['models'][0]
@@ -551,7 +568,7 @@ class Plotter:
                                  if x in pars and 'fraction' in par_vals[x]])
         weights = weights if len(weights) else None
         ranges = [0.999 for x in range(len(corner_input[0]))]
-        cfig = corner.corner(corner_input, labels=var_names, quantiles=[0.16, 0.5, 0.84],
+        cfig = corner.corner(corner_input, labels=var_names, quantiles=[0.05, 0.5, 0.95],
                              show_titles=True, weights=weights, range=ranges)
         return cfig
 
