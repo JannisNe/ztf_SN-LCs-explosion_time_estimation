@@ -77,7 +77,7 @@ class Fitter:
                 raise FitterError(f'File {missing_indice_file} is empty!')
 
         else:
-            if len(os.listdir(outdir)) > 0:
+            if len(os.listdir(outdir)) > 0 and not kwargs.get('mock_fit', False):
                 # If outdir does contain stuff, clear it. That deletes old fit results, that stay after
                 # collect_results in the case of Mosfit
                 inpt = input(f'I\'m about to delete old result files in {outdir}. should I continue? [y/n] ')
@@ -117,7 +117,8 @@ class Fitter:
         kwargs_to_pass = {key: kwargs[key] if key in kwargs.keys() else default_kwargs[key]
                           for key in default_kwargs.keys()}
 
-        self.job_id = submit_to_desy(**kwargs_to_pass)
+        if not kwargs.get('mock_fit', False):
+            self.job_id = submit_to_desy(**kwargs_to_pass)
 
         logger.info(f'job-ID is {self.job_id}')
 
