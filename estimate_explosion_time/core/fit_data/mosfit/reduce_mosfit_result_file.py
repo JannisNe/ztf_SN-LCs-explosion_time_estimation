@@ -6,6 +6,7 @@
 
 import json
 import argparse
+import os
 import numpy as np
 
 
@@ -85,18 +86,14 @@ def reduce_mosfit_output_photometry(mosfit_output_data, confidence_level):
     return real_data, new_data_from_fits
 
 
-if __name__ == '__main__':
+def make_reduced_output(data, confidence_level=0.9):
 
-    parser = argparse.ArgumentParser(description='only keep sepcified parameters in realizations')
-    parser.add_argument('file', type=str, help='path to json file')
-    parser.add_argument('--confidence_level', type=float,
-                        help='confidence level', default=0.9)
-    args = parser.parse_args()
+    if isinstance(data, str) and os.path.isfile(data):
+        data = read_mosfit_output(data)
 
-    data = read_mosfit_output(args.file)
     texp, tref, max_realization_ind = get_explosion_time_posterior(data)
 
-    texp_q = np.quantile(texp, [0.5-args.confidence_level/2, 0.5, 0.5+args.confidence_level/2])
+    texp_q = np.quantile(texp, [0.5 - confidence_level / 2, 0.5, 0.5 + confidence_level / 2])
 
     dict_to_keep = [{
         'parameters': {
@@ -115,8 +112,21 @@ if __name__ == '__main__':
     model['realizations'] = dict_to_keep
     data['models'][0] = model
 
-    real_data, new_data_from_fits = reduce_mosfit_output_photometry(data, confidence_level=args.confidence_level)
+    real_data, new_data_from_fits = reduce_mosfit_output_photometry(data, confidence_level=confidence_level)
     data['photometry'] = real_data + new_data_from_fits
 
+    return data
+
+
+if __name__ == '__main__':
+
+    parser = argparse.ArgumentParser(description='only keep sepcified parameters in realizations')
+    parser.add_argument('file', type=str, help='path to json file')
+    parser.add_argument('--confidence_level', type=float,
+                        help='confidence level', default=0.9)
+    args = parser.parse_args()
+
+    new_data = make_reduced_output(args.file, args.confidence_level)
+
     with open(args.file, 'w') as f:
-        json.dump(data, f, indent=4, sort_keys=True)
+        json.dump(new_data, f, indent=4, sort_keys=True)
